@@ -1,7 +1,10 @@
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import { useEnquiryModal } from '@/hooks/useEnquiryModal';
 
 export function HomePage() {
+  const { openEnquiry } = useEnquiryModal();
+
   return (
     <main className="flex min-h-screen flex-col items-center justify-center gap-6 px-6 text-center">
       <p className="text-xs font-bold tracking-widest text-sage-deep">NUTRITION THAT FITS YOUR LIFE</p>
@@ -13,7 +16,9 @@ export function HomePage() {
         confirms the client scaffold — routing, providers, and design tokens — is wired up.
       </p>
       <div className="flex gap-3">
-        <Button className="rounded-full bg-coral text-white hover:bg-coral/90">Book a free consultation</Button>
+        <Button onClick={openEnquiry} className="rounded-full bg-coral text-white hover:bg-coral/90">
+          Book a free consultation
+        </Button>
         <Button asChild variant="outline" className="rounded-full border-line text-forest">
           <Link to="/login">Log in</Link>
         </Button>
