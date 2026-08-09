@@ -29,8 +29,8 @@ means the controller filters to resources owned by / assigned to the caller.
 
 | Method | Path | Auth | Payload → Response |
 |---|---|---|---|
-| POST | `/enquiries` | Public | `{goal, name, email, phone, preferredSlot?, note?}` → `{enquiry}` |
-| GET | `/enquiries` | admin | `?status=` → `[enquiry]` |
+| POST | `/enquiries` | Public, rate-limited (5 / 15 min / IP) | `{goal, name, email, phone, preferredSlot?, note?}` → `{enquiry}` |
+| GET | `/enquiries` | admin | `?status=&page=&limit=` → `{enquiries[], total, page, pages}` |
 | GET | `/enquiries/:id` | admin | → `{enquiry}` |
 | PATCH | `/enquiries/:id` | admin | `{status?, note?}` → `{enquiry}` |
 | DELETE | `/enquiries/:id` | admin | → `204` |

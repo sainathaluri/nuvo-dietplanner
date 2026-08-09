@@ -9,7 +9,17 @@ export const createEnquiry = asyncHandler(async (req, res) => {
 export const listEnquiries = asyncHandler(async (req, res) => {
   const filter = {};
   if (req.query.status) filter.status = req.query.status;
-  res.json(await Enquiry.find(filter).sort({ createdAt: -1 }));
+
+  const page = req.query.page ?? 1;
+  const limit = req.query.limit ?? 20;
+  const skip = (page - 1) * limit;
+
+  const [enquiries, total] = await Promise.all([
+    Enquiry.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
+    Enquiry.countDocuments(filter),
+  ]);
+
+  res.json({ enquiries, total, page, pages: Math.max(1, Math.ceil(total / limit)) });
 });
 
 export const getEnquiry = asyncHandler(async (req, res) => {
