@@ -1,0 +1,15 @@
+import { Router } from 'express';
+import { authenticate } from '../middleware/authenticate.js';
+import { authorize } from '../middleware/authorize.js';
+import { validate } from '../middleware/validate.js';
+import { listPlans, getPlan, createPlan, updatePlan, deletePlan } from '../controllers/plan.controller.js';
+import { createPlanSchema, updatePlanSchema } from '../schemas/plan.schema.js';
+
+export const planRouter = Router();
+planRouter.use(authenticate);
+
+planRouter.get('/', listPlans);
+planRouter.get('/:id', getPlan);
+planRouter.post('/', authorize('dietitian', 'admin'), validate(createPlanSchema), createPlan);
+planRouter.patch('/:id', authorize('dietitian', 'admin'), validate(updatePlanSchema), updatePlan);
+planRouter.delete('/:id', authorize('dietitian', 'admin'), deletePlan);
