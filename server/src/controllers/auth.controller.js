@@ -9,7 +9,11 @@ const REFRESH_COOKIE = 'nourishly_refresh';
 const cookieOptions = {
   httpOnly: true,
   secure: env.nodeEnv === 'production',
-  sameSite: 'strict',
+  // In production the client (Vercel) and server (Render/Railway) are genuinely different
+  // sites, not just different ports like local dev — `strict` (or even `lax`) would silently
+  // stop the browser from ever sending this cookie cross-site, breaking refresh/logout entirely.
+  // `none` requires `secure: true`, which is already true exactly when this is `none`.
+  sameSite: env.nodeEnv === 'production' ? 'none' : 'lax',
   path: '/api/auth',
   maxAge: 30 * 24 * 60 * 60 * 1000,
 };

@@ -39,11 +39,14 @@ means the controller filters to resources owned by / assigned to the caller.
 
 | Method | Path | Auth | Payload → Response |
 |---|---|---|---|
-| GET | `/plans` | Auth (own) | `?client=&week=` → `[plan]` |
+| GET | `/plans` | Auth (own) | `?client=&week=` → `[plan]` (meals populate `recipe`) |
 | GET | `/plans/:id` | Auth (own) | → `{plan}` |
-| POST | `/plans` | dietitian, admin | `{client, dietitian, week, meals[]}` → `{plan}` |
-| PATCH | `/plans/:id` | dietitian, admin | `{meals?, published?}` → `{plan}` |
+| POST | `/plans` | dietitian(own client only, `403` otherwise — `dietitian` derived from caller), admin(explicit `dietitian`) | `{client, dietitian?, title?, week, meals[]}` → `{plan}` |
+| PATCH | `/plans/:id` | dietitian(own plan only, `403` otherwise), admin | `{title?, meals?, published?}` → `{plan}` |
+| PATCH | `/plans/:id/meals/:index` | client (own) | `{completed?, swapRequested?}` → `{plan}` — client can mark a meal eaten or flag it for a swap; cannot change what the meal is |
 | DELETE | `/plans/:id` | dietitian, admin | → `204` |
+
+Each meal slot: `{day, time, mealType, recipe, completed, swapRequested}`.
 
 ## Recipes — `recipe.routes.js`
 
@@ -59,16 +62,16 @@ means the controller filters to resources owned by / assigned to the caller.
 
 | Method | Path | Auth | Payload → Response |
 |---|---|---|---|
-| GET | `/calls` | Auth (own) | `?from=&to=` → `[call]` |
-| POST | `/calls` | dietitian, admin | `{client, dietitian, scheduledAt, notes?}` → `{call}` |
-| PATCH | `/calls/:id` | dietitian, admin, client(own, cancel only) | `{scheduledAt?, status?, notes?}` → `{call}` |
+| GET | `/calls` | Auth (own) | `?client=&from=&to=` (`client` further narrows a dietitian/admin's own results) → `[call]` (`dietitian`/`client` populated to `{_id, name}`) |
+| POST | `/calls` | client, dietitian, admin | client: `{scheduledAt, notes?}` (server derives `client`/`dietitian` from the caller's `assignedDietitian`, `400` if none set); dietitian: `{client, scheduledAt, notes?}` (server sets `dietitian` to self); admin: `{client, dietitian, scheduledAt, notes?}` → `{call}` |
+| PATCH | `/calls/:id` | dietitian(own), admin, client(own) | client may only send `{scheduledAt?}` (reschedule) or `{status: 'cancelled'}` (cancel) on a still-`scheduled` call — `403`/`400` otherwise; dietitian/admin → `{scheduledAt?, status?, notes?}` → `{call}` |
 | DELETE | `/calls/:id` | dietitian, admin | → `204` |
 
 ## Progress — `progress.routes.js`
 
 | Method | Path | Auth | Payload → Response |
 |---|---|---|---|
-| GET | `/progress` | Auth (own) | `?client=` (dietitian/admin) → `[progress]` |
+| GET | `/progress` | Auth (own) | `?client=` (dietitian: only their assigned client, `403` otherwise; admin: any) → `[progress]` |
 | POST | `/progress` | client | `{date, weight, energy?, adherence?}` → `{progress}` |
 | PATCH | `/progress/:id` | client(own), admin | → `{progress}` |
 | DELETE | `/progress/:id` | client(own), admin | → `204` |
@@ -77,20 +80,23 @@ means the controller filters to resources owned by / assigned to the caller.
 
 | Method | Path | Auth | Payload → Response |
 |---|---|---|---|
-| GET | `/reports` | Auth (own) | → `[report]` |
+| GET | `/reports` | Auth (own) | `?client=` (dietitian: only their assigned client, `403` otherwise; no `?client=` defaults to all of the dietitian's own clients; admin: any/all) → `[report]` (`client` populated to `{_id, name}`, each has a `feedback[]` thread) |
 | POST | `/reports` | client | `multipart/form-data {file, note?}` → `{report}` (status `pending`) |
-| PATCH | `/reports/:id` | dietitian, admin | `{review, status}` → `{report}` |
+| POST | `/reports/:id/feedback` | dietitian, admin | `{message, status?}` → `{report}` — appends one entry to `feedback[]` and sets `status` (default `reviewed`) |
 | DELETE | `/reports/:id` | client(own), admin | → `204` |
+
+Each report: `{client, fileName, filePath, note, status, feedback: [{author, authorName, message, createdAt}]}`.
 
 ## Insights — `insights.routes.js`
 
 | Method | Path | Auth | Response |
 |---|---|---|---|
-| GET | `/insights/admin-overview` | admin | `{newEnquiries, followUpsToday, conversionRate, activeClients, growthSeries[], dietitianWorkload[]}` |
+| GET | `/insights/admin-overview` | admin | `{newEnquiries, followUpsToday, conversionRate, activeClients, growthSeries: [{week, enquiries}] (last 8 weeks, real aggregation, zero-filled), dietitianWorkload: [{dietitian, clients}], statusBreakdown: [{status, count}]}` |
 | GET | `/insights/dietitian-overview` | dietitian | `{todaysAppointments[], attentionItems[], clientMomentum}` |
 
 ## Known gaps (flagged, not silently decided)
 
 - `Report` file storage is local disk (`server/uploads/`) for now — swap for S3 when decided.
-- `growthSeries` and `attentionItems` return empty placeholders until there's real time-series /
-  flagging logic to back them.
+- `attentionItems` on `/insights/dietitian-overview` still returns an empty placeholder — the
+  dietitian-side overview dashboard itself is still unbuilt (Phase 5 placeholder), so there's no
+  UI consuming this yet. `admin-overview`'s `growthSeries` is real as of Phase 8.

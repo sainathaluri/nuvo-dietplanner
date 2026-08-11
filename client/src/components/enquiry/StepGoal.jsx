@@ -5,7 +5,7 @@ export function StepGoal({ value, onSelect }) {
     <div>
       <p className="text-xs font-bold tracking-widest text-sage-deep">LET'S START WITH YOU</p>
       <h2 className="mt-2 mb-2 text-2xl">What would you love support with?</h2>
-      <p className="text-sm text-muted">Choose the goal that feels closest. You can tell us more later.</p>
+      <p className="text-sm text-muted-foreground">Choose the goal that feels closest. You can tell us more later.</p>
 
       <div className="mt-6 grid grid-cols-2 gap-2.5">
         {GOAL_OPTIONS.map(({ value: goal, icon: Icon }) => (

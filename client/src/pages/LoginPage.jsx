@@ -2,9 +2,14 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { AuthLayout } from '@/components/auth/AuthLayout';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
 import { useAuth } from '@/hooks/useAuth';
+import { getPortalHome } from '@/lib/portalHome';
+import { getAuthErrorMessage } from '@/lib/authError';
 
 const loginSchema = z.object({
   email: z.string().email('Enter a valid email'),
@@ -14,57 +19,80 @@ const loginSchema = z.object({
 export function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [serverError, setServerError] = useState(null);
-  const {
-    register,
-    handleSubmit,
-    formState: { errors, isSubmitting },
-  } = useForm({ resolver: zodResolver(loginSchema) });
+
+  const form = useForm({
+    resolver: zodResolver(loginSchema),
+    defaultValues: { email: '', password: '' },
+  });
 
   const onSubmit = async (values) => {
     setServerError(null);
     try {
-      await login(values);
-      navigate('/portal');
-    } catch {
-      setServerError('Invalid email or password.');
+      const user = await login(values);
+      const from = location.state?.from;
+      navigate(from?.pathname ? `${from.pathname}${from.search ?? ''}` : getPortalHome(user.role), {
+        replace: true,
+      });
+    } catch (error) {
+      setServerError(getAuthErrorMessage(error, { fallback: "We couldn't log you in. Please try again." }));
     }
   };
 
   return (
-    <main className="flex min-h-screen items-center justify-center px-6">
-      <form onSubmit={handleSubmit(onSubmit)} className="w-full max-w-sm rounded-card bg-white p-8 shadow-soft">
-        <h1 className="text-2xl">Welcome back</h1>
-        <p className="mb-6 text-sm text-muted">Log in to your Nourishly portal.</p>
-
-        <label className="mb-4 block text-sm font-semibold">
-          Email
-          <input
-            type="email"
-            className="mt-1 w-full rounded-lg border border-line p-2.5 text-sm"
-            {...register('email')}
+    <AuthLayout eyebrow="WELCOME BACK" title="Log in to Nourishly" subtitle="Pick up right where you left off.">
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)} noValidate className="grid gap-4">
+          <FormField
+            control={form.control}
+            name="email"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Email address</FormLabel>
+                <FormControl>
+                  <Input type="email" autoComplete="email" placeholder="you@example.com" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
           />
-          {errors.email && <span className="mt-1 block text-xs text-destructive">{errors.email.message}</span>}
-        </label>
-
-        <label className="mb-6 block text-sm font-semibold">
-          Password
-          <input
-            type="password"
-            className="mt-1 w-full rounded-lg border border-line p-2.5 text-sm"
-            {...register('password')}
+          <FormField
+            control={form.control}
+            name="password"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Password</FormLabel>
+                <FormControl>
+                  <Input type="password" autoComplete="current-password" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
           />
-          {errors.password && (
-            <span className="mt-1 block text-xs text-destructive">{errors.password.message}</span>
+
+          {serverError && (
+            <p role="alert" className="text-sm text-destructive">
+              {serverError}
+            </p>
           )}
-        </label>
 
-        {serverError && <p className="mb-4 text-sm text-destructive">{serverError}</p>}
+          <Button
+            type="submit"
+            disabled={form.formState.isSubmitting}
+            className="mt-2 w-full rounded-full bg-coral text-white hover:bg-coral/90"
+          >
+            {form.formState.isSubmitting ? 'Logging in…' : 'Log in'}
+          </Button>
+        </form>
+      </Form>
 
-        <Button type="submit" disabled={isSubmitting} className="w-full rounded-full bg-coral text-white">
-          {isSubmitting ? 'Logging in…' : 'Log in'}
-        </Button>
-      </form>
-    </main>
+      <p className="mt-6 text-sm text-muted-foreground">
+        New to Nourishly?{' '}
+        <Link to="/register" className="font-semibold text-forest hover:underline">
+          Create an account
+        </Link>
+      </p>
+    </AuthLayout>
   );
 }

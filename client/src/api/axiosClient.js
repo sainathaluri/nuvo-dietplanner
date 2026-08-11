@@ -14,11 +14,17 @@ axiosClient.interceptors.request.use((config) => {
 
 let refreshPromise = null;
 
+// Requests to these endpoints must never trigger a refresh-and-retry: retrying /auth/refresh
+// itself on its own 401 would await a promise that awaits itself and hang forever, and a 401
+// from /auth/login or /auth/register is a real credentials/validation failure, not a stale token.
+const NO_REFRESH_RETRY = ['/auth/refresh', '/auth/login', '/auth/register'];
+
 axiosClient.interceptors.response.use(
   (response) => response,
   async (error) => {
     const { config, response } = error;
-    if (response?.status !== 401 || config._retried) throw error;
+    const skipRetry = NO_REFRESH_RETRY.some((path) => config?.url?.includes(path));
+    if (response?.status !== 401 || config._retried || skipRetry) throw error;
     config._retried = true;
 
     refreshPromise ??= axiosClient

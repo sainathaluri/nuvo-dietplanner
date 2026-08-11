@@ -1,4 +1,5 @@
 import { Call } from '../models/Call.js';
+import { User } from '../models/User.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { ApiError } from '../utils/ApiError.js';
 
@@ -10,16 +11,39 @@ function scopeToOwner(req, filter = {}) {
 
 export const listCalls = asyncHandler(async (req, res) => {
   const filter = scopeToOwner(req);
+  // Narrows further to one client. Safe even for a dietitian passing an unrelated client id —
+  // `filter.dietitian` from scopeToOwner is still ANDed in, so it can only ever return zero rows,
+  // never someone else's calls.
+  if (req.query.client && req.user.role !== 'client') filter.client = req.query.client;
   if (req.query.from || req.query.to) {
     filter.scheduledAt = {};
     if (req.query.from) filter.scheduledAt.$gte = new Date(req.query.from);
     if (req.query.to) filter.scheduledAt.$lte = new Date(req.query.to);
   }
-  res.json(await Call.find(filter).sort({ scheduledAt: 1 }));
+  res.json(
+    await Call.find(filter).populate('dietitian', 'name').populate('client', 'name').sort({ scheduledAt: 1 })
+  );
 });
 
 export const createCall = asyncHandler(async (req, res) => {
-  res.status(201).json(await Call.create(req.body));
+  let { client, dietitian, scheduledAt, notes } = req.body;
+
+  if (req.user.role === 'client') {
+    const me = await User.findById(req.user.id);
+    if (!me.assignedDietitian) {
+      throw ApiError.badRequest('No dietitian assigned yet — contact support to get set up.');
+    }
+    client = req.user.id;
+    dietitian = String(me.assignedDietitian);
+  } else if (req.user.role === 'dietitian') {
+    if (!client) throw ApiError.badRequest('client is required');
+    dietitian = req.user.id;
+  } else if (!client || !dietitian) {
+    throw ApiError.badRequest('client and dietitian are required');
+  }
+
+  const call = await Call.create({ client, dietitian, scheduledAt, notes });
+  res.status(201).json(await call.populate('dietitian', 'name'));
 });
 
 export const updateCall = asyncHandler(async (req, res) => {
@@ -27,16 +51,26 @@ export const updateCall = asyncHandler(async (req, res) => {
   if (!call) throw ApiError.notFound('Call not found');
 
   const isOwningClient = req.user.role === 'client' && String(call.client) === req.user.id;
-  if (isOwningClient && Object.keys(req.body).some((key) => key !== 'status') ) {
-    throw ApiError.forbidden('Clients may only cancel a call');
-  }
-  if (isOwningClient && req.body.status && req.body.status !== 'cancelled') {
-    throw ApiError.forbidden('Clients may only cancel a call');
+  const isOwningDietitian = req.user.role === 'dietitian' && String(call.dietitian) === req.user.id;
+  if (req.user.role === 'client' && !isOwningClient) throw ApiError.forbidden();
+  if (req.user.role === 'dietitian' && !isOwningDietitian) throw ApiError.forbidden();
+
+  if (isOwningClient) {
+    const allowedKeys = new Set(['scheduledAt', 'status']);
+    if (Object.keys(req.body).some((key) => !allowedKeys.has(key))) {
+      throw ApiError.forbidden('Clients may only reschedule or cancel a call');
+    }
+    if (req.body.status && req.body.status !== 'cancelled') {
+      throw ApiError.forbidden('Clients may only cancel a call, not mark it complete');
+    }
+    if (call.status !== 'scheduled') {
+      throw ApiError.badRequest('This call can no longer be changed');
+    }
   }
 
   Object.assign(call, req.body);
   await call.save();
-  res.json(call);
+  res.json(await call.populate('dietitian', 'name'));
 });
 
 export const deleteCall = asyncHandler(async (req, res) => {

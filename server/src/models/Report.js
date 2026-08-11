@@ -1,5 +1,14 @@
 import mongoose from 'mongoose';
 
+const feedbackEntrySchema = new mongoose.Schema(
+  {
+    author: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    authorName: { type: String, required: true },
+    message: { type: String, required: true },
+  },
+  { timestamps: { createdAt: true, updatedAt: false } }
+);
+
 const reportSchema = new mongoose.Schema(
   {
     client: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
@@ -7,8 +16,7 @@ const reportSchema = new mongoose.Schema(
     filePath: { type: String, required: true },
     note: { type: String },
     status: { type: String, enum: ['pending', 'reviewed'], default: 'pending' },
-    review: { type: String },
-    reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    feedback: { type: [feedbackEntrySchema], default: [] },
   },
   { timestamps: true }
 );

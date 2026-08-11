@@ -9,6 +9,6 @@ export const callRouter = Router();
 callRouter.use(authenticate);
 
 callRouter.get('/', listCalls);
-callRouter.post('/', authorize('dietitian', 'admin'), validate(createCallSchema), createCall);
+callRouter.post('/', authorize('client', 'dietitian', 'admin'), validate(createCallSchema), createCall);
 callRouter.patch('/:id', validate(updateCallSchema), updateCall);
 callRouter.delete('/:id', authorize('dietitian', 'admin'), deleteCall);

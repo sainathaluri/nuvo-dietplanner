@@ -12,8 +12,10 @@ Nourishly is a monorepo with two independently run apps:
 
 - Access token: short-lived JWT, returned in the response body on login/register/refresh, held
   only in memory on the client (`client/src/api/tokenStore.js`) — never in `localStorage`.
-- Refresh token: long-lived JWT in an `httpOnly`, `sameSite=strict` cookie scoped to `/api/auth`,
-  set by the server, read by `POST /api/auth/refresh`.
+- Refresh token: long-lived JWT in an `httpOnly` cookie scoped to `/api/auth`, set by the server,
+  read by `POST /api/auth/refresh`. `sameSite` is `lax` in development (client/server share the
+  same site — `localhost` — even on different ports) and `none` (+ `secure`) in production, since
+  the deployed client (Vercel) and server (Render/Railway) are genuinely different sites.
 - `client/src/context/AuthContext.jsx` silently calls `/auth/refresh` → `/auth/me` on mount to
   restore a session; `client/src/api/axiosClient.js`'s response interceptor retries a single
   401 by refreshing, then replays the original request.
@@ -38,5 +40,6 @@ See `CLAUDE.md` §1 and the approved plan for the full `client/`/`server/` layou
 
 ## Not yet implemented
 
-The marketing site, the three-role portal UI, and file-storage backend beyond local disk are
-follow-up phases — see `docs/PROGRESS.md`.
+The marketing site itself (the ported legacy homepage beyond the scaffold placeholder), the
+dietitian-side Overview dashboard, admin usage of the weekly plan builder, and file storage
+beyond local disk — see `docs/PROGRESS.md` for the full current-status summary.

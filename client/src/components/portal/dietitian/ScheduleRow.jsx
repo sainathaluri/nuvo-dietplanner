@@ -1,0 +1,59 @@
+import { X } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { WEEKDAYS } from '@/lib/clientPortal';
+import { MealDropzone } from './MealDropzone';
+
+const MEAL_TYPES = ['Breakfast', 'Lunch', 'Snack', 'Dinner'];
+
+export function ScheduleRow({ meal, recipes, onChange, onRemove }) {
+  const recipe = recipes.find((r) => r._id === meal.recipeId) ?? null;
+
+  return (
+    <div className="grid grid-cols-[1fr_1fr_1fr_1.6fr_28px] items-center gap-2">
+      <Select value={meal.day} onValueChange={(day) => onChange({ day })}>
+        <SelectTrigger className="w-full" aria-label="Day">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {WEEKDAYS.map((day) => (
+            <SelectItem key={day} value={day}>
+              {day}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      <Input aria-label="Time" value={meal.time} onChange={(e) => onChange({ time: e.target.value })} placeholder="8:00 AM" />
+
+      <Select value={meal.mealType} onValueChange={(mealType) => onChange({ mealType })}>
+        <SelectTrigger className="w-full" aria-label="Meal type">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {MEAL_TYPES.map((type) => (
+            <SelectItem key={type} value={type}>
+              {type}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      <MealDropzone
+        id={`row-${meal.localId}`}
+        recipe={recipe}
+        recipes={recipes}
+        onAssign={(recipeId) => onChange({ recipeId })}
+      />
+
+      <button
+        type="button"
+        onClick={onRemove}
+        aria-label="Remove meal"
+        className="grid size-7 place-items-center rounded-lg bg-[#fff0eb] text-coral hover:bg-coral/20"
+      >
+        <X className="size-4" aria-hidden="true" />
+      </button>
+    </div>
+  );
+}

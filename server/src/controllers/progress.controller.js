@@ -1,12 +1,15 @@
 import { Progress } from '../models/Progress.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { ApiError } from '../utils/ApiError.js';
+import { assertDietitianOwnsClient } from '../utils/scope.js';
 
 export const listProgress = asyncHandler(async (req, res) => {
   const filter = {};
   if (req.user.role === 'client') filter.client = req.user.id;
-  else if (req.query.client) filter.client = req.query.client;
-  else throw ApiError.badRequest('client query param required');
+  else if (req.query.client) {
+    await assertDietitianOwnsClient(req, req.query.client);
+    filter.client = req.query.client;
+  } else throw ApiError.badRequest('client query param required');
 
   res.json(await Progress.find(filter).sort({ date: 1 }));
 });

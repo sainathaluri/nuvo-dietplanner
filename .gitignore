@@ -1,0 +1,15 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/*
+!.vscode/extensions.json
+.idea
+
+# Logs / stray session artifacts
+*.log
+.mongo-uri.tmp
+
+# Node (defense-in-depth; client/ and server/ have their own, more specific .gitignore)
+node_modules/
