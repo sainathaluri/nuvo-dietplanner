@@ -7,6 +7,10 @@ services:
     buildCommand: npm ci
     startCommand: npm start
     healthCheckPath: /api/health
+    disk:
+      name: nourishly-uploads
+      mountPath: /opt/render/project/src/server/uploads
+      sizeGB: 1
     envVars:
       - key: NODE_ENV
         value: production
