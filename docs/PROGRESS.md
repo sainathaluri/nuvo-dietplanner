@@ -1,7 +1,17 @@
 # Progress
 
-Last updated: 2026-08-12 (database migration session). For the detailed day-by-day build
+Last updated: 2026-08-16 (deploy-readiness session). For the detailed day-by-day build
 journal, see `docs/worklog/` — this file is the current-state summary; the worklog is the history.
+
+**Update, 2026-08-16: the MySQL migration is now actually committed and pushed** (it was written
+and tested on 2026-08-12 but sat uncommitted until this session), `render.yaml` is deploy-ready,
+and `docs/API.md` was re-checked against the live route files with no changes needed — the
+migration's JSON-contract guarantee held. Server → Render and client → Vercel are both prepped but
+not yet actually connected/deployed (no hosting credentials available in this environment); see
+`docs/worklog/2026-08-16.md` for the deploy order to follow (Render first, then Vercel with the
+real API URL, then back to Render for `CLIENT_ORIGIN`). A Render persistent disk for
+`server/uploads/` was drafted and then deliberately reverted — it needs a paid plan, and the
+project is staying on `plan: free` for now.
 
 **Update, 2026-08-12: the database is now MySQL, not MongoDB.** User-requested stack change,
 confirmed explicitly before starting since CLAUDE.md pins the backend to MongoDB + Mongoose.
@@ -121,6 +131,9 @@ worklog for each day's full reasoning):
   silently. Flagging for whoever owns the brand palette to decide.
 - Vercel preview deployments (a different URL per PR/branch) will fail CORS against a
   single-origin `CLIENT_ORIGIN` production API — noted in the README, not solved.
+- Neither Render nor Vercel is actually connected/deployed yet as of 2026-08-16 — `render.yaml`
+  and `client/vercel.json` are both ready, but no live URLs exist yet. The `sameSite: 'strict'`
+  refresh-cookie fix (Phase 8) has never been checked against a real cross-origin deployment.
 - Operational note, not app code: on this Windows dev machine, stopping a background `npm run
   dev`/`vite preview` task through the harness's task-stop mechanism did not reliably kill the
   underlying OS process across this project's sessions — by Phase 8 this had accumulated over 30
@@ -131,6 +144,11 @@ worklog for each day's full reasoning):
 
 One line per work session, newest first. Links to `docs/worklog/YYYY-MM-DD.md`.
 
+- [2026-08-16](worklog/2026-08-16.md) — Committed and pushed the MySQL migration that had sat
+  uncommitted since 2026-08-12; fixed a local `node --watch` restart loop that was causing login
+  connection resets; prepped `render.yaml` for deploy (added then reverted a persistent disk for
+  uploads, staying on the free plan); re-verified `docs/API.md` needed no changes; documented the
+  Render-then-Vercel deploy order for the user to execute.
 - [2026-08-12](worklog/2026-08-12.md) — Migrated the database from MongoDB/Mongoose to MySQL
   (`mysql2`, hand-written SQL, no ORM), user-requested. Preserved the JSON API contract exactly so
   no client file changed; verified with an extensive curl smoke test against a live MySQL-backed
