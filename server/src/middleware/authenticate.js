@@ -1,6 +1,6 @@
 import { verifyAccessToken } from '../utils/jwt.js';
 import { ApiError } from '../utils/ApiError.js';
-import { User } from '../models/User.js';
+import { findUserById } from '../models/User.js';
 import { asyncHandler } from './asyncHandler.js';
 
 export const authenticate = asyncHandler(async (req, res, next) => {
@@ -14,7 +14,7 @@ export const authenticate = asyncHandler(async (req, res, next) => {
     throw ApiError.unauthorized('Invalid or expired access token');
   }
 
-  const user = await User.findById(payload.sub);
+  const user = await findUserById(payload.sub);
   if (!user) throw ApiError.unauthorized('User no longer exists');
 
   req.user = user;

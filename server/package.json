@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "node --watch server.js",
     "start": "node server.js",
-    "seed": "node src/seed.js"
+    "seed": "node src/seed.js",
+    "db:migrate": "node src/db/migrate.js",
+    "migrate:from-mongo": "node src/db/migrate-from-mongo.mjs"
   },
   "dependencies": {
     "bcrypt": "^5.1.1",
@@ -17,12 +19,12 @@
     "express-rate-limit": "^7.4.0",
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
-    "mongoose": "^8.6.0",
     "morgan": "^1.10.0",
     "multer": "^1.4.5-lts.1",
+    "mysql2": "^3.11.3",
     "zod": "^3.23.8"
   },
   "devDependencies": {
-    "mongodb-memory-server": "^11.2.0"
+    "mongodb": "^6.9.0"
   }
 }

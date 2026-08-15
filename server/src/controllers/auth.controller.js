@@ -1,8 +1,9 @@
-import { User } from '../models/User.js';
+import { findUserByEmail, findUserById, createUser } from '../models/User.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { ApiError } from '../utils/ApiError.js';
 import { hashPassword, comparePassword } from '../utils/password.js';
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from '../utils/jwt.js';
+import { toClientShape } from '../utils/serialize.js';
 import { env } from '../config/env.js';
 
 const REFRESH_COOKIE = 'nourishly_refresh';
@@ -27,21 +28,21 @@ function issueTokens(res, user) {
 
 export const register = asyncHandler(async (req, res) => {
   const { name, email, password } = req.body;
-  if (await User.findOne({ email })) throw ApiError.conflict('Email already registered');
+  if (await findUserByEmail(email)) throw ApiError.conflict('Email already registered');
 
-  const user = await User.create({ name, email, passwordHash: await hashPassword(password), role: 'client' });
+  const user = await createUser({ name, email, passwordHash: await hashPassword(password), role: 'client' });
   const accessToken = issueTokens(res, user);
-  res.status(201).json({ user, accessToken });
+  res.status(201).json({ user: toClientShape(user, ['passwordHash']), accessToken });
 });
 
 export const login = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
-  const user = await User.findOne({ email });
+  const user = await findUserByEmail(email);
   if (!user || !(await comparePassword(password, user.passwordHash))) {
     throw ApiError.unauthorized('Invalid email or password');
   }
   const accessToken = issueTokens(res, user);
-  res.json({ user, accessToken });
+  res.json({ user: toClientShape(user, ['passwordHash']), accessToken });
 });
 
 export const refresh = asyncHandler(async (req, res) => {
@@ -55,7 +56,7 @@ export const refresh = asyncHandler(async (req, res) => {
     throw ApiError.unauthorized('Invalid or expired refresh token');
   }
 
-  const user = await User.findById(payload.sub);
+  const user = await findUserById(payload.sub);
   if (!user || user.refreshTokenVersion !== payload.tokenVersion) {
     throw ApiError.unauthorized('Refresh token no longer valid');
   }
@@ -69,5 +70,5 @@ export const logout = asyncHandler(async (req, res) => {
 });
 
 export const me = asyncHandler(async (req, res) => {
-  res.json({ user: req.user });
+  res.json({ user: toClientShape(req.user, ['passwordHash']) });
 });

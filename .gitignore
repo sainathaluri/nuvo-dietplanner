@@ -9,7 +9,6 @@ Thumbs.db
 
 # Logs / stray session artifacts
 *.log
-.mongo-uri.tmp
 
 # Node (defense-in-depth; client/ and server/ have their own, more specific .gitignore)
 node_modules/

@@ -1,8 +1,7 @@
-import mongoose from 'mongoose';
+import { pool } from '../db/pool.js';
 import { env } from './env.js';
 
 export async function connectDb() {
-  mongoose.set('strictQuery', true);
-  await mongoose.connect(env.mongoUri);
-  console.log(`[db] connected → ${env.mongoUri}`);
+  await pool.query('SELECT 1');
+  console.log(`[db] connected → ${env.mysqlUrl}`);
 }

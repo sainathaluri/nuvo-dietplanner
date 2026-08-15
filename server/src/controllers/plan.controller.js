@@ -1,7 +1,15 @@
-import { Plan } from '../models/Plan.js';
+import {
+  listPlans as queryPlans,
+  findPlanById,
+  createPlan as createPlanRecord,
+  updatePlanById,
+  deletePlanById,
+  updatePlanMealByIndex,
+} from '../models/Plan.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { ApiError } from '../utils/ApiError.js';
 import { assertDietitianOwnsClient } from '../utils/scope.js';
+import { toClientShape } from '../utils/serialize.js';
 
 function scopeToOwner(req, filter = {}) {
   if (req.user.role === 'client') filter.client = req.user.id;
@@ -13,11 +21,12 @@ export const listPlans = asyncHandler(async (req, res) => {
   const filter = scopeToOwner(req);
   if (req.query.client && req.user.role !== 'client') filter.client = req.query.client;
   if (req.query.week) filter.week = new Date(req.query.week);
-  res.json(await Plan.find(filter).populate('meals.recipe').sort({ week: -1 }));
+  const plans = await queryPlans(filter);
+  res.json(plans.map((p) => toClientShape(p)));
 });
 
 export const getPlan = asyncHandler(async (req, res) => {
-  const plan = await Plan.findById(req.params.id).populate('meals.recipe');
+  const plan = await findPlanById(req.params.id);
   if (!plan) throw ApiError.notFound('Plan not found');
 
   const owns =
@@ -26,7 +35,7 @@ export const getPlan = asyncHandler(async (req, res) => {
     (req.user.role === 'dietitian' && String(plan.dietitian) === req.user.id);
   if (!owns) throw ApiError.forbidden();
 
-  res.json(plan);
+  res.json(toClientShape(plan));
 });
 
 export const createPlan = asyncHandler(async (req, res) => {
@@ -39,42 +48,40 @@ export const createPlan = asyncHandler(async (req, res) => {
     await assertDietitianOwnsClient(req, client);
   }
 
-  const plan = await Plan.create({ client, dietitian, ...rest });
-  res.status(201).json(await plan.populate('meals.recipe'));
+  const plan = await createPlanRecord({ client, dietitian, ...rest });
+  res.status(201).json(toClientShape(plan));
 });
 
 export const updatePlan = asyncHandler(async (req, res) => {
-  const plan = await Plan.findById(req.params.id);
-  if (!plan) throw ApiError.notFound('Plan not found');
-  if (req.user.role === 'dietitian' && String(plan.dietitian) !== req.user.id) throw ApiError.forbidden();
+  const existing = await findPlanById(req.params.id);
+  if (!existing) throw ApiError.notFound('Plan not found');
+  if (req.user.role === 'dietitian' && String(existing.dietitian) !== req.user.id) throw ApiError.forbidden();
 
-  Object.assign(plan, req.body);
-  await plan.save();
-  res.json(await plan.populate('meals.recipe'));
+  const plan = await updatePlanById(req.params.id, req.body);
+  res.json(toClientShape(plan));
 });
 
 export const deletePlan = asyncHandler(async (req, res) => {
-  const plan = await Plan.findById(req.params.id);
-  if (!plan) throw ApiError.notFound('Plan not found');
-  if (req.user.role === 'dietitian' && String(plan.dietitian) !== req.user.id) throw ApiError.forbidden();
+  const existing = await findPlanById(req.params.id);
+  if (!existing) throw ApiError.notFound('Plan not found');
+  if (req.user.role === 'dietitian' && String(existing.dietitian) !== req.user.id) throw ApiError.forbidden();
 
-  await plan.deleteOne();
+  await deletePlanById(req.params.id);
   res.status(204).send();
 });
 
 // Client-only, narrowly scoped: can flip their own meal's completed/swapRequested flags, never
 // the meal's content (day/time/mealType/recipe) — that stays dietitian/admin territory above.
 export const updateMealStatus = asyncHandler(async (req, res) => {
-  const plan = await Plan.findById(req.params.id);
-  if (!plan) throw ApiError.notFound('Plan not found');
-  if (String(plan.client) !== req.user.id) throw ApiError.forbidden();
+  const existing = await findPlanById(req.params.id);
+  if (!existing) throw ApiError.notFound('Plan not found');
+  if (String(existing.client) !== req.user.id) throw ApiError.forbidden();
 
-  const meal = plan.meals[Number(req.params.index)];
-  if (!meal) throw ApiError.notFound('Meal not found');
+  if (!existing.meals[Number(req.params.index)]) throw ApiError.notFound('Meal not found');
 
-  if (req.body.completed !== undefined) meal.completed = req.body.completed;
-  if (req.body.swapRequested !== undefined) meal.swapRequested = req.body.swapRequested;
-
-  await plan.save();
-  res.json(await plan.populate('meals.recipe'));
+  const plan = await updatePlanMealByIndex(req.params.id, Number(req.params.index), {
+    completed: req.body.completed,
+    swapRequested: req.body.swapRequested,
+  });
+  res.json(toClientShape(plan));
 });

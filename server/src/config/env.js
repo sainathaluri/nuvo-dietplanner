@@ -9,7 +9,7 @@ function required(name, fallback) {
 export const env = {
   nodeEnv: process.env.NODE_ENV || 'development',
   port: Number(process.env.PORT || 4000),
-  mongoUri: required('MONGO_URI', 'mongodb://127.0.0.1:27017/nourishly'),
+  mysqlUrl: required('MYSQL_URL', 'mysql://root:@127.0.0.1:3306/nourishly'),
   jwtAccessSecret: required('JWT_ACCESS_SECRET', 'dev-access-secret-change-me'),
   jwtRefreshSecret: required('JWT_REFRESH_SECRET', 'dev-refresh-secret-change-me'),
   jwtAccessTtl: process.env.JWT_ACCESS_TTL || '15m',

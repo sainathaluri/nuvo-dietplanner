@@ -6,7 +6,7 @@ Nourishly is a monorepo with two independently run apps:
 
 - **`client/`** — React 18 + Vite (JavaScript, no TS), Tailwind v4, shadcn/ui (radix base, Nova
   preset re-themed onto the legacy palette in `client/src/index.css`).
-- **`server/`** — Node.js + Express (ESM), MongoDB + Mongoose.
+- **`server/`** — Node.js + Express (ESM), MySQL via `mysql2` (hand-written SQL, no ORM).
 
 ## Auth flow
 
@@ -26,7 +26,15 @@ Nourishly is a monorepo with two independently run apps:
 
 `routes/*.routes.js` → `middleware/validate.js` (zod) → `middleware/authenticate.js` /
 `authorize.js` → `controllers/*.controller.js` (wrapped in `middleware/asyncHandler.js`) →
-`models/*.js` (Mongoose) → `middleware/errorHandler.js` formats any thrown `utils/ApiError.js`.
+`models/*.js` (hand-written SQL over the `mysql2` pool in `db/pool.js`) →
+`middleware/errorHandler.js` formats any thrown `utils/ApiError.js`.
+
+`models/*.js` are plain data-access modules, not an ORM: each function runs its own
+parameterized SQL and returns camelCase JS objects. `utils/serialize.js#toClientShape` renames a
+row's `id` to `_id` (and strips internal-only fields like `passwordHash`) immediately before a
+controller calls `res.json(...)` — this is the one place the pre-migration Mongoose-style `_id`
+JSON contract is reconstructed, done deliberately so the client needed zero changes when the
+database moved off MongoDB. See `server/src/db/schema.sql` for the relational schema.
 
 ## Client data flow
 

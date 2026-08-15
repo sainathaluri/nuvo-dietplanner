@@ -1,7 +1,14 @@
-import { Progress } from '../models/Progress.js';
+import {
+  listProgress as queryProgress,
+  createProgress as createProgressRecord,
+  findProgressById,
+  updateProgressById,
+  deleteProgressById,
+} from '../models/Progress.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { ApiError } from '../utils/ApiError.js';
 import { assertDietitianOwnsClient } from '../utils/scope.js';
+import { toClientShape } from '../utils/serialize.js';
 
 export const listProgress = asyncHandler(async (req, res) => {
   const filter = {};
@@ -11,28 +18,29 @@ export const listProgress = asyncHandler(async (req, res) => {
     filter.client = req.query.client;
   } else throw ApiError.badRequest('client query param required');
 
-  res.json(await Progress.find(filter).sort({ date: 1 }));
+  const entries = await queryProgress(filter);
+  res.json(entries.map((e) => toClientShape(e)));
 });
 
 export const createProgress = asyncHandler(async (req, res) => {
-  res.status(201).json(await Progress.create({ ...req.body, client: req.user.id }));
+  const entry = await createProgressRecord({ ...req.body, client: req.user.id });
+  res.status(201).json(toClientShape(entry));
 });
 
 export const updateProgress = asyncHandler(async (req, res) => {
-  const entry = await Progress.findById(req.params.id);
+  const entry = await findProgressById(req.params.id);
   if (!entry) throw ApiError.notFound('Progress entry not found');
   if (req.user.role !== 'admin' && String(entry.client) !== req.user.id) throw ApiError.forbidden();
 
-  Object.assign(entry, req.body);
-  await entry.save();
-  res.json(entry);
+  const updated = await updateProgressById(req.params.id, req.body);
+  res.json(toClientShape(updated));
 });
 
 export const deleteProgress = asyncHandler(async (req, res) => {
-  const entry = await Progress.findById(req.params.id);
+  const entry = await findProgressById(req.params.id);
   if (!entry) throw ApiError.notFound('Progress entry not found');
   if (req.user.role !== 'admin' && String(entry.client) !== req.user.id) throw ApiError.forbidden();
 
-  await entry.deleteOne();
+  await deleteProgressById(req.params.id);
   res.status(204).send();
 });

@@ -1,11 +1,10 @@
-import mongoose from 'mongoose';
-import { env } from './config/env.js';
-import { User } from './models/User.js';
-import { Recipe } from './models/Recipe.js';
-import { Plan } from './models/Plan.js';
-import { Progress } from './models/Progress.js';
-import { Call } from './models/Call.js';
-import { Report } from './models/Report.js';
+import { pool } from './db/pool.js';
+import { findUserByEmail, createUser, updateUser } from './models/User.js';
+import { findRecipesByTitles, createRecipe } from './models/Recipe.js';
+import { findPlanByClient, createPlan } from './models/Plan.js';
+import { createProgress } from './models/Progress.js';
+import { createCall } from './models/Call.js';
+import { createReport, addReportFeedback } from './models/Report.js';
 import { hashPassword } from './utils/password.js';
 
 // One known-credential user per role, for local dev and manual portal testing.
@@ -85,15 +84,18 @@ function daysAgo(n) {
 }
 
 async function seedDemoData(dietitian, client) {
-  let recipes = await Recipe.find({ title: { $in: SEED_RECIPES.map((r) => r.title) } });
+  let recipes = await findRecipesByTitles(SEED_RECIPES.map((r) => r.title));
   if (recipes.length === 0) {
-    recipes = await Recipe.insertMany(SEED_RECIPES.map((r) => ({ ...r, createdBy: dietitian._id })));
+    recipes = [];
+    for (const r of SEED_RECIPES) {
+      recipes.push(await createRecipe({ ...r, createdBy: dietitian.id }));
+    }
     console.log(`[seed] created ${recipes.length} demo recipes`);
   } else {
     console.log('[seed] demo recipes already exist, skipped');
   }
 
-  const existingPlan = await Plan.findOne({ client: client._id });
+  const existingPlan = await findPlanByClient(client.id);
   if (existingPlan) {
     console.log('[seed] demo plan/progress/calls/report already exist for the seed client, skipped');
     return;
@@ -102,14 +104,14 @@ async function seedDemoData(dietitian, client) {
   const [breakfast, lunch, dinner, snack] = recipes;
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   const meals = days.flatMap((day, i) => [
-    { day, time: '8:00 AM', mealType: 'Breakfast', recipe: breakfast._id, completed: i < 2 },
-    { day, time: '1:00 PM', mealType: 'Lunch', recipe: lunch._id, completed: i < 1 },
-    { day, time: '7:30 PM', mealType: 'Dinner', recipe: i % 3 === 0 ? snack._id : dinner._id },
+    { day, time: '8:00 AM', mealType: 'Breakfast', recipe: breakfast.id, completed: i < 2 },
+    { day, time: '1:00 PM', mealType: 'Lunch', recipe: lunch.id, completed: i < 1 },
+    { day, time: '7:30 PM', mealType: 'Dinner', recipe: i % 3 === 0 ? snack.id : dinner.id },
   ]);
 
-  await Plan.create({
-    client: client._id,
-    dietitian: dietitian._id,
+  await createPlan({
+    client: client.id,
+    dietitian: dietitian.id,
     title: "Cleo's weekly nourish plan",
     week: startOfWeek(new Date()),
     meals,
@@ -125,69 +127,63 @@ async function seedDemoData(dietitian, client) {
     { date: daysAgo(7), weight: 68.4, energy: 7, adherence: 88 },
     { date: daysAgo(1), weight: 67.8, energy: 8, adherence: 90 },
   ];
-  await Progress.insertMany(progressEntries.map((entry) => ({ ...entry, client: client._id })));
+  for (const entry of progressEntries) {
+    await createProgress({ ...entry, client: client.id });
+  }
   console.log(`[seed] created ${progressEntries.length} demo progress entries`);
 
-  await Call.create([
-    {
-      client: client._id,
-      dietitian: dietitian._id,
-      scheduledAt: daysAgo(-2),
-      status: 'scheduled',
-      notes: 'Progress check-in',
-    },
-    {
-      client: client._id,
-      dietitian: dietitian._id,
-      scheduledAt: daysAgo(10),
-      status: 'completed',
-      notes: 'Initial consult',
-    },
-  ]);
+  await createCall({
+    client: client.id,
+    dietitian: dietitian.id,
+    scheduledAt: daysAgo(-2),
+    status: 'scheduled',
+    notes: 'Progress check-in',
+  });
+  await createCall({
+    client: client.id,
+    dietitian: dietitian.id,
+    scheduledAt: daysAgo(10),
+    status: 'completed',
+    notes: 'Initial consult',
+  });
   console.log('[seed] created demo calls (1 upcoming, 1 past)');
 
   // filePath doesn't point to a real file in server/uploads/ — this is metadata-only seed data,
   // reports uploaded for real through the UI will have a working download link.
-  await Report.create({
-    client: client._id,
+  const report = await createReport({
+    client: client.id,
     fileName: 'lipid-panel.pdf',
     filePath: 'seed-lipid-panel.pdf',
     note: 'Latest lab results from my checkup.',
+  });
+  await addReportFeedback(report.id, {
+    authorId: dietitian.id,
+    authorName: dietitian.name,
+    message: 'Thanks for sharing this — your numbers look steady, keep up the great work!',
     status: 'reviewed',
-    feedback: [
-      {
-        author: dietitian._id,
-        authorName: dietitian.name,
-        message: 'Thanks for sharing this — your numbers look steady, keep up the great work!',
-      },
-    ],
   });
   console.log('[seed] created demo report with dietitian feedback');
 }
 
 async function seed() {
-  mongoose.set('strictQuery', true);
-  await mongoose.connect(env.mongoUri);
-  console.log(`[seed] connected → ${env.mongoUri}`);
-
   const created = [];
   const skipped = [];
 
   for (const { name, email, password, role } of SEED_USERS) {
-    const existing = await User.findOne({ email });
+    const existing = await findUserByEmail(email);
     if (existing) {
       skipped.push(email);
       continue;
     }
-    await User.create({ name, email, passwordHash: await hashPassword(password), role });
+    await createUser({ name, email, passwordHash: await hashPassword(password), role });
     created.push(email);
   }
 
-  const dietitian = await User.findOne({ email: 'dietitian@nourishly.test' });
-  const client = await User.findOne({ email: 'client@nourishly.test' });
-  const client2 = await User.findOne({ email: 'client2@nourishly.test' });
-  await User.updateOne({ _id: client._id, assignedDietitian: null }, { $set: { assignedDietitian: dietitian._id } });
-  await User.updateOne({ _id: client2._id, assignedDietitian: null }, { $set: { assignedDietitian: dietitian._id } });
+  const dietitian = await findUserByEmail('dietitian@nourishly.test');
+  const client = await findUserByEmail('client@nourishly.test');
+  const client2 = await findUserByEmail('client2@nourishly.test');
+  if (!client.assignedDietitian) await updateUser(client.id, { assignedDietitian: dietitian.id });
+  if (!client2.assignedDietitian) await updateUser(client2.id, { assignedDietitian: dietitian.id });
 
   console.log(`[seed] created: ${created.length ? created.join(', ') : '(none)'}`);
   console.log(`[seed] already existed, skipped: ${skipped.length ? skipped.join(', ') : '(none)'}`);
@@ -195,7 +191,7 @@ async function seed() {
 
   await seedDemoData(dietitian, client);
 
-  await mongoose.disconnect();
+  await pool.end();
 }
 
 seed().catch((err) => {

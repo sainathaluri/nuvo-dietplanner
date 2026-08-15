@@ -1,7 +1,19 @@
 # Progress
 
-Last updated: 2026-08-11 (post-Phase-8 verification session). For the detailed day-by-day build
+Last updated: 2026-08-12 (database migration session). For the detailed day-by-day build
 journal, see `docs/worklog/` — this file is the current-state summary; the worklog is the history.
+
+**Update, 2026-08-12: the database is now MySQL, not MongoDB.** User-requested stack change,
+confirmed explicitly before starting since CLAUDE.md pins the backend to MongoDB + Mongoose.
+`server/src/models/*.js` are now hand-written SQL (`mysql2`, no ORM) over the relational schema in
+`server/src/db/schema.sql`. The JSON API contract (`_id`, `createdAt`, `tags`, `feedback`, ...) was
+preserved exactly, so **no client file changed** — verified end-to-end with an extensive curl
+smoke test (login as all 3 roles, full CRUD across every resource, both insights endpoints) against
+a live MySQL-backed server, plus a clean `npm run build` on the client. See
+`docs/worklog/2026-08-12.md` for the full account, including two real bugs this surfaced (nested
+`meal.recipe` missing `_id`, aggregate counts risking string instead of number) and how they were
+fixed. A `migrate-from-mongo.mjs` script exists to port any real pre-migration MongoDB data but has
+not yet been run against real data (none existed in this dev environment).
 
 ## Status at a glance
 
@@ -119,6 +131,11 @@ worklog for each day's full reasoning):
 
 One line per work session, newest first. Links to `docs/worklog/YYYY-MM-DD.md`.
 
+- [2026-08-12](worklog/2026-08-12.md) — Migrated the database from MongoDB/Mongoose to MySQL
+  (`mysql2`, hand-written SQL, no ORM), user-requested. Preserved the JSON API contract exactly so
+  no client file changed; verified with an extensive curl smoke test against a live MySQL-backed
+  server. Fixed two real bugs found along the way (nested recipe missing `_id`, aggregate counts
+  risking string instead of number).
 - [2026-08-11](worklog/2026-08-11.md) — First real in-browser verification of the whole project
   (`playwright-core` driving the system's installed Chrome). Found and fixed two real bugs (a
   flattened chart, a plan-builder-breaking timezone bug in two more places than Phase 8 caught),

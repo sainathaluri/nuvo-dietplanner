@@ -1,6 +1,6 @@
 # Nourishly
 
-A nutrition / dietitian ↔ client management platform — a React (Vite) + Node/Express + MongoDB
+A nutrition / dietitian ↔ client management platform — a React (Vite) + Node/Express + MySQL
 rebuild of a static prototype (kept for reference in `legacy/`).
 
 See `CLAUDE.md` for the full project rules this codebase follows, `docs/ARCHITECTURE.md` for how
@@ -11,17 +11,18 @@ for what's built and what isn't.
 
 - **Client** — React 18 + Vite (JavaScript, no TypeScript), Tailwind v4, shadcn/ui, React Router,
   TanStack Query, react-hook-form + zod, recharts, `@dnd-kit`.
-- **Server** — Node.js + Express (ESM), MongoDB + Mongoose, JWT auth (access token in memory,
-  refresh token in an `httpOnly` cookie), zod request validation.
+- **Server** — Node.js + Express (ESM), MySQL via `mysql2` (hand-written SQL, no ORM), JWT auth
+  (access token in memory, refresh token in an `httpOnly` cookie), zod request validation.
 
 ## Local development
 
 ```bash
-# server — needs a MongoDB connection (local mongod, Atlas, or mongodb-memory-server for a
-# throwaway local instance — see server/dev-verify-mongo.mjs)
+# server — needs a MySQL connection (local mysqld, Docker, or PlanetScale/RDS in prod — see
+# server/dev-verify-mysql.mjs for a throwaway local Docker instance)
 cd server
-cp .env.example .env        # fill in MONGO_URI at minimum
+cp .env.example .env        # fill in MYSQL_URL at minimum
 npm install
+npm run db:migrate           # creates the schema (safe to re-run)
 npm run dev                  # http://localhost:4000/api/health
 npm run seed                  # optional — creates admin@/dietitian@/client@/client2@nourishly.test,
                                # all password Password123!, plus demo recipes/plan/progress/calls/reports
@@ -46,8 +47,11 @@ Node 20 buildpack without Docker at all — either works, since the server has n
 2. If using the Dockerfile: set the Docker context/build path to `server/`. Otherwise: build
    command `npm ci`, start command `npm start`.
 3. Set the environment variables from the **Production `.env` checklist** below.
-4. Note the deployed URL (e.g. `https://nourishly-api.onrender.com`) — the client needs it.
-5. Both platforms deploy on git push by default; no extra CI config needed for a first deploy.
+4. Run `npm run db:migrate` once against the production `MYSQL_URL` to create the schema (it's
+   idempotent — `CREATE TABLE IF NOT EXISTS` — safe to re-run on every deploy if you'd rather wire
+   it into the build/start command).
+5. Note the deployed URL (e.g. `https://nourishly-api.onrender.com`) — the client needs it.
+6. Both platforms deploy on git push by default; no extra CI config needed for a first deploy.
 
 **Report uploads** (`server/uploads/`, written by `multer` in `server/src/middleware/upload.js`)
 are local disk — Render/Railway's default filesystem is **ephemeral** (wiped on redeploy/restart).
@@ -73,7 +77,7 @@ not solved here).
 | Variable | Production value |
 |---|---|
 | `NODE_ENV` | `production` |
-| `MONGO_URI` | A real MongoDB Atlas (or equivalent) connection string — never the local dev default |
+| `MYSQL_URL` | A real MySQL (PlanetScale, RDS, or equivalent) connection string — never the local dev default |
 | `JWT_ACCESS_SECRET` | A strong random value, different from dev, e.g. `openssl rand -base64 32` |
 | `JWT_REFRESH_SECRET` | Same — a **different** strong random value than `JWT_ACCESS_SECRET` |
 | `JWT_ACCESS_TTL` / `JWT_REFRESH_TTL` | Fine to leave at the defaults (`15m` / `30d`) unless you have a reason to change them |
