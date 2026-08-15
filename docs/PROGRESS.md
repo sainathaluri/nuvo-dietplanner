@@ -6,12 +6,13 @@ journal, see `docs/worklog/` — this file is the current-state summary; the wor
 **Update, 2026-08-16: the MySQL migration is now actually committed and pushed** (it was written
 and tested on 2026-08-12 but sat uncommitted until this session), `render.yaml` is deploy-ready,
 and `docs/API.md` was re-checked against the live route files with no changes needed — the
-migration's JSON-contract guarantee held. Server → Render and client → Vercel are both prepped but
+migration's JSON-contract guarantee held. Server → Render and client → Netlify are both prepped but
 not yet actually connected/deployed (no hosting credentials available in this environment); see
-`docs/worklog/2026-08-16.md` for the deploy order to follow (Render first, then Vercel with the
+`docs/worklog/2026-08-16.md` for the deploy order to follow (Render first, then Netlify with the
 real API URL, then back to Render for `CLIENT_ORIGIN`). A Render persistent disk for
 `server/uploads/` was drafted and then deliberately reverted — it needs a paid plan, and the
-project is staying on `plan: free` for now.
+project is staying on `plan: free` for now. Client deploy target switched from Vercel to Netlify
+mid-session, user-requested — `client/vercel.json` removed, `client/netlify.toml` added.
 
 **Update, 2026-08-12: the database is now MySQL, not MongoDB.** User-requested stack change,
 confirmed explicitly before starting since CLAUDE.md pins the backend to MongoDB + Mongoose.
@@ -30,7 +31,7 @@ not yet been run against real data (none existed in this dev environment).
 All eight planned phases are built: static prototype → scaffolded React/Express app → marketing
 enquiry flow → real auth → authenticated portal shell → client portal → dietitian portal → admin
 portal → deploy-readiness polish. The app runs locally end-to-end (seed script gives working
-logins for all three roles) and is configured to deploy (Vercel client + Render/Railway server).
+logins for all three roles) and is configured to deploy (Netlify client + Render/Railway server).
 
 **Update, 2026-08-11: the app has now actually been watched running in a real browser**, for the
 first time in the project's history — every prior session's worklog flagged this as the top
@@ -79,8 +80,8 @@ Schedule calls, Report reviews (reply to a client's feedback thread).
 builder), Growth insights (real 8-week enquiry volume, pipeline-stage breakdown, and dietitian
 workload charts — no more empty placeholders).
 
-**Deploy & polish** — `server/Dockerfile`, `client/vercel.json` (SPA rewrites), root `README.md`
-with Vercel/Render/Railway steps and a production `.env` checklist, route-level code splitting
+**Deploy & polish** — `server/Dockerfile`, `client/netlify.toml` (SPA redirects), root `README.md`
+with Netlify/Render/Railway steps and a production `.env` checklist, route-level code splitting
 (`React.lazy`, cut the main JS bundle from one ~1.27MB chunk to a 697KB vendor chunk + ~24 small
 per-route chunks), font-loading optimization (moved off a render-blocking CSS `@import` to
 preconnected `<link>` tags), real meta tags + a brand favicon (replacing a leftover generic
@@ -129,10 +130,10 @@ worklog for each day's full reasoning):
   *exact specified* cream background, not implementation bugs. Fixing them would mean deviating
   from "preserve the visual design... this is a port, not a redesign," which isn't a call to make
   silently. Flagging for whoever owns the brand palette to decide.
-- Vercel preview deployments (a different URL per PR/branch) will fail CORS against a
+- Netlify deploy previews (a different URL per PR/branch) will fail CORS against a
   single-origin `CLIENT_ORIGIN` production API — noted in the README, not solved.
-- Neither Render nor Vercel is actually connected/deployed yet as of 2026-08-16 — `render.yaml`
-  and `client/vercel.json` are both ready, but no live URLs exist yet. The `sameSite: 'strict'`
+- Neither Render nor Netlify is actually connected/deployed yet as of 2026-08-16 — `render.yaml`
+  and `client/netlify.toml` are both ready, but no live URLs exist yet. The `sameSite: 'strict'`
   refresh-cookie fix (Phase 8) has never been checked against a real cross-origin deployment.
 - Operational note, not app code: on this Windows dev machine, stopping a background `npm run
   dev`/`vite preview` task through the harness's task-stop mechanism did not reliably kill the
@@ -147,8 +148,10 @@ One line per work session, newest first. Links to `docs/worklog/YYYY-MM-DD.md`.
 - [2026-08-16](worklog/2026-08-16.md) — Committed and pushed the MySQL migration that had sat
   uncommitted since 2026-08-12; fixed a local `node --watch` restart loop that was causing login
   connection resets; prepped `render.yaml` for deploy (added then reverted a persistent disk for
-  uploads, staying on the free plan); re-verified `docs/API.md` needed no changes; documented the
-  Render-then-Vercel deploy order for the user to execute.
+  uploads, staying on the free plan); re-verified `docs/API.md` needed no changes; switched the
+  client deploy target from Vercel to Netlify (user-requested) — `vercel.json` → `netlify.toml`,
+  README/ARCHITECTURE updated; documented the Render-then-Netlify deploy order for the user to
+  execute.
 - [2026-08-12](worklog/2026-08-12.md) — Migrated the database from MongoDB/Mongoose to MySQL
   (`mysql2`, hand-written SQL, no ORM), user-requested. Preserved the JSON API contract exactly so
   no client file changed; verified with an extensive curl smoke test against a live MySQL-backed

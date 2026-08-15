@@ -15,7 +15,7 @@ Nourishly is a monorepo with two independently run apps:
 - Refresh token: long-lived JWT in an `httpOnly` cookie scoped to `/api/auth`, set by the server,
   read by `POST /api/auth/refresh`. `sameSite` is `lax` in development (client/server share the
   same site — `localhost` — even on different ports) and `none` (+ `secure`) in production, since
-  the deployed client (Vercel) and server (Render/Railway) are genuinely different sites.
+  the deployed client (Netlify) and server (Render/Railway) are genuinely different sites.
 - `client/src/context/AuthContext.jsx` silently calls `/auth/refresh` → `/auth/me` on mount to
   restore a session; `client/src/api/axiosClient.js`'s response interceptor retries a single
   401 by refreshing, then replays the original request.

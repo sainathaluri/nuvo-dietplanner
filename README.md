@@ -59,16 +59,16 @@ Fine for a demo; for real report persistence, mount a persistent disk (Render: "
 swap the storage backend for S3/R2 (flagged as an open decision in `docs/API.md`'s known gaps —
 not solved here).
 
-### Client → Vercel
+### Client → Netlify
 
-1. Import the repo into Vercel, set the project **root directory** to `client/`.
-2. Vercel auto-detects the Vite framework preset (`vercel.json` in `client/` pins the build
-   command, output directory, and adds the SPA rewrite every client-routed path needs — without
-   it, a hard refresh on e.g. `/app/overview` 404s on static hosting since there's no server-side
-   route to match it).
-3. Set `VITE_API_URL` in the Vercel project's environment variables to the deployed server URL
+1. Import the repo into Netlify, set the project **base directory** to `client/`.
+2. Netlify auto-detects the Vite framework preset; `netlify.toml` in `client/` pins the build
+   command (`npm run build`), publish directory (`dist`), and adds the SPA redirect every
+   client-routed path needs — without it, a hard refresh on e.g. `/app/overview` 404s on static
+   hosting since there's no server-side route to match it.
+3. Set `VITE_API_URL` in the Netlify site's environment variables to the deployed server URL
    plus `/api` (e.g. `https://nourishly-api.onrender.com/api`).
-4. Deploy. Every push to the connected branch redeploys automatically; PRs get preview URLs.
+4. Deploy. Every push to the connected branch redeploys automatically; PRs get deploy previews.
 
 ### Production `.env` checklist
 
@@ -81,7 +81,7 @@ not solved here).
 | `JWT_ACCESS_SECRET` | A strong random value, different from dev, e.g. `openssl rand -base64 32` |
 | `JWT_REFRESH_SECRET` | Same — a **different** strong random value than `JWT_ACCESS_SECRET` |
 | `JWT_ACCESS_TTL` / `JWT_REFRESH_TTL` | Fine to leave at the defaults (`15m` / `30d`) unless you have a reason to change them |
-| `CLIENT_ORIGIN` | The exact deployed client URL, e.g. `https://nourishly.vercel.app` — used for both CORS and (indirectly) how the refresh cookie behaves; see below |
+| `CLIENT_ORIGIN` | The exact deployed client URL, e.g. `https://nourishly.netlify.app` — used for both CORS and (indirectly) how the refresh cookie behaves; see below |
 | `PORT` | Usually set automatically by Render/Railway — only set it yourself if self-hosting |
 
 **`client/`** (see `client/.env.example`):
@@ -99,8 +99,8 @@ not solved here).
   is `sameSite: 'none'` in production (`server/src/controllers/auth.controller.js`) specifically
   because the client and server are different sites once deployed, which also means the cookie
   requires HTTPS (`secure: true`, already tied to `NODE_ENV=production`) — so both services need
-  to actually be served over HTTPS, which Vercel/Render/Railway all do by default.
-- Vercel preview deployments get a different URL per PR/branch; `CLIENT_ORIGIN` as a single value
+  to actually be served over HTTPS, which Netlify/Render/Railway all do by default.
+- Netlify deploy previews get a different URL per PR/branch; `CLIENT_ORIGIN` as a single value
   only covers the production client URL. Previews hitting the production API will fail CORS —
   a known limitation, not solved here (would need either a wildcard/allowlist origin check or a
   separate preview API deployment).
