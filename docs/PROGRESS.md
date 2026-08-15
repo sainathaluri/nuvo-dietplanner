@@ -1,18 +1,19 @@
 # Progress
 
-Last updated: 2026-08-16 (deploy-readiness session). For the detailed day-by-day build
+Last updated: 2026-08-16 (first live deployment). For the detailed day-by-day build
 journal, see `docs/worklog/` — this file is the current-state summary; the worklog is the history.
 
-**Update, 2026-08-16: the MySQL migration is now actually committed and pushed** (it was written
-and tested on 2026-08-12 but sat uncommitted until this session), `render.yaml` is deploy-ready,
-and `docs/API.md` was re-checked against the live route files with no changes needed — the
-migration's JSON-contract guarantee held. Server → Render and client → Netlify are both prepped but
-not yet actually connected/deployed (no hosting credentials available in this environment); see
-`docs/worklog/2026-08-16.md` for the deploy order to follow (Render first, then Netlify with the
-real API URL, then back to Render for `CLIENT_ORIGIN`). A Render persistent disk for
-`server/uploads/` was drafted and then deliberately reverted — it needs a paid plan, and the
-project is staying on `plan: free` for now. Client deploy target switched from Vercel to Netlify
-mid-session, user-requested — `client/vercel.json` removed, `client/netlify.toml` added.
+**Update, 2026-08-16: the app is live in production for the first time.** Client on Netlify
+(`nevo-diet-planner.netlify.app`) → server on Render (`nourishly-api.onrender.com`) → MySQL on
+Railway, all connected and verified end-to-end: logged in as a seeded client through the actual
+browser, confirmed real data renders, and confirmed the session survives a full page reload —
+directly verifying the cross-origin `sameSite: 'none'` refresh-cookie behavior that had been
+flagged since Phase 8 as never checked against a real deployment (see "Known gaps" below, now
+resolved). Also landed earlier the same day: the MySQL migration (written and tested 2026-08-12,
+finally committed and pushed), a switch of the client deploy target from Vercel to Netlify, and a
+re-check of `docs/API.md` against the live route files (no changes needed). Full account,
+including the Railway public-vs-private connection string gotcha, in
+`docs/worklog/2026-08-16.md`.
 
 **Update, 2026-08-12: the database is now MySQL, not MongoDB.** User-requested stack change,
 confirmed explicitly before starting since CLAUDE.md pins the backend to MongoDB + Mongoose.
@@ -31,7 +32,9 @@ not yet been run against real data (none existed in this dev environment).
 All eight planned phases are built: static prototype → scaffolded React/Express app → marketing
 enquiry flow → real auth → authenticated portal shell → client portal → dietitian portal → admin
 portal → deploy-readiness polish. The app runs locally end-to-end (seed script gives working
-logins for all three roles) and is configured to deploy (Netlify client + Render/Railway server).
+logins for all three roles) **and is now actually deployed**: Netlify client
+(`nevo-diet-planner.netlify.app`) + Render server (`nourishly-api.onrender.com`) + Railway MySQL,
+verified end-to-end as of 2026-08-16.
 
 **Update, 2026-08-11: the app has now actually been watched running in a real browser**, for the
 first time in the project's history — every prior session's worklog flagged this as the top
@@ -132,9 +135,12 @@ worklog for each day's full reasoning):
   silently. Flagging for whoever owns the brand palette to decide.
 - Netlify deploy previews (a different URL per PR/branch) will fail CORS against a
   single-origin `CLIENT_ORIGIN` production API — noted in the README, not solved.
-- Neither Render nor Netlify is actually connected/deployed yet as of 2026-08-16 — `render.yaml`
-  and `client/netlify.toml` are both ready, but no live URLs exist yet. The `sameSite: 'strict'`
-  refresh-cookie fix (Phase 8) has never been checked against a real cross-origin deployment.
+- Two abandoned duplicate Render services (`nourishly-api-32tp`, `nourishly-api-8a63`) exist from
+  earlier failed Blueprint-apply attempts, both in a failed state — safe to delete, left for the
+  user to remove.
+- Render's Shell and persistent disks both require a paid plan; the project is staying on
+  `plan: free`, so one-off scripts (`db:migrate`, `seed`) against production have to be run from a
+  local machine with `MYSQL_URL` pointed at the production database, not from Render itself.
 - Operational note, not app code: on this Windows dev machine, stopping a background `npm run
   dev`/`vite preview` task through the harness's task-stop mechanism did not reliably kill the
   underlying OS process across this project's sessions — by Phase 8 this had accumulated over 30
@@ -150,8 +156,13 @@ One line per work session, newest first. Links to `docs/worklog/YYYY-MM-DD.md`.
   connection resets; prepped `render.yaml` for deploy (added then reverted a persistent disk for
   uploads, staying on the free plan); re-verified `docs/API.md` needed no changes; switched the
   client deploy target from Vercel to Netlify (user-requested) — `vercel.json` → `netlify.toml`,
-  README/ARCHITECTURE updated; documented the Render-then-Netlify deploy order for the user to
-  execute.
+  README/ARCHITECTURE updated. Then, once the user had connected Netlify, Render, and Railway
+  themselves: got the Claude in Chrome extension connected for the first time on this project,
+  fixed a stale `MONGO_URI`→`MYSQL_URL` env var and a Railway private-vs-public connection-string
+  mixup, redeployed the server, ran `db:migrate`/`seed` against production from a local machine
+  (Render's Shell needs a paid plan), and verified the whole chain live in a real browser —
+  including that the session survives a page reload, resolving the cross-origin cookie risk
+  flagged since Phase 8.
 - [2026-08-12](worklog/2026-08-12.md) — Migrated the database from MongoDB/Mongoose to MySQL
   (`mysql2`, hand-written SQL, no ORM), user-requested. Preserved the JSON API contract exactly so
   no client file changed; verified with an extensive curl smoke test against a live MySQL-backed
