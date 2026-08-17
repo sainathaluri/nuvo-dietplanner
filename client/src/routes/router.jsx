@@ -22,6 +22,7 @@ const ProgressPage = lazyNamed(() => import('@/pages/app/ProgressPage'), 'Progre
 const CallsPage = lazyNamed(() => import('@/pages/app/CallsPage'), 'CallsPage');
 const ReportsPage = lazyNamed(() => import('@/pages/app/ReportsPage'), 'ReportsPage');
 const ClientsPage = lazyNamed(() => import('@/pages/app/ClientsPage'), 'ClientsPage');
+const UsersPage = lazyNamed(() => import('@/pages/app/UsersPage'), 'UsersPage');
 const PlanPage = lazyNamed(() => import('@/pages/app/PlanPage'), 'PlanPage');
 const RecipesPage = lazyNamed(() => import('@/pages/app/RecipesPage'), 'RecipesPage');
 const EnquiriesPage = lazyNamed(() => import('@/pages/app/EnquiriesPage'), 'EnquiriesPage');
@@ -57,6 +58,7 @@ export const router = createBrowserRouter([
               guarded('calls', <CallsPage />),
               guarded('reports', <ReportsPage />),
               guarded('clients', <ClientsPage />),
+              guarded('users', <UsersPage />),
               guarded('plan', <PlanPage />),
               guarded('recipes', <RecipesPage />),
               guarded('enquiries', <EnquiriesPage />),

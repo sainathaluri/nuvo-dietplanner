@@ -8,7 +8,7 @@ import { updateMeSchema, updateUserSchema, createUserSchema } from '../schemas/u
 export const userRouter = Router();
 userRouter.use(authenticate);
 
-userRouter.get('/', authorize('admin', 'dietitian'), listUsers);
+userRouter.get('/', authorize('admin', 'dietitian', 'client'), listUsers);
 userRouter.get('/:id', getUser);
 userRouter.patch('/me', validate(updateMeSchema), updateMe);
 userRouter.patch('/:id', authorize('admin'), validate(updateUserSchema), updateUser);

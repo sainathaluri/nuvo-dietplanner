@@ -13,3 +13,14 @@ export function useClient(clientId) {
     enabled: Boolean(clientId),
   });
 }
+
+// Server auto-scopes: a client or admin gets the full dietitian directory. A dietitian caller
+// gets nothing useful back (the server forces their own assignedDietitian scope instead), so
+// callers on that role should pass enabled: false.
+export function useDietitians(enabled = true) {
+  return useQuery({
+    queryKey: ['users', 'dietitians'],
+    queryFn: () => listUsersRequest({ role: 'dietitian' }),
+    enabled,
+  });
+}

@@ -1,4 +1,4 @@
-import { LayoutDashboard, Utensils, LineChart, Phone, FileText, Users, CalendarRange, BookOpen, Inbox, BarChart3 } from 'lucide-react';
+import { LayoutDashboard, Utensils, LineChart, Phone, FileText, Users, CalendarRange, BookOpen, Inbox, BarChart3, UserCog } from 'lucide-react';
 
 // Single source of truth for the portal shell: who sees what, matching CLAUDE.md §5 exactly.
 // Route guards in router.jsx derive their role lists from this via ROUTE_ROLES below, so the
@@ -23,6 +23,7 @@ export const NAV_BY_ROLE = {
     { to: '/app/overview', label: 'Business overview', icon: LayoutDashboard },
     { to: '/app/enquiries', label: 'Enquiry pipeline', icon: Inbox },
     { to: '/app/clients', label: 'Clients', icon: Users },
+    { to: '/app/users', label: 'Manage users', icon: UserCog },
     { to: '/app/plan', label: 'Weekly plan', icon: CalendarRange },
     { to: '/app/recipes', label: 'Recipe library', icon: BookOpen },
     { to: '/app/insights', label: 'Growth insights', icon: BarChart3 },

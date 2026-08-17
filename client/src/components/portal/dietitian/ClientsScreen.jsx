@@ -3,10 +3,13 @@ import { Users } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/portal/shared/EmptyState';
+import { useAuth } from '@/hooks/useAuth';
 import { useClients } from '@/hooks/useClients';
 import { ClientDetailDrawer } from './ClientDetailDrawer';
 
 export function ClientsScreen() {
+  const { user } = useAuth();
+  const isAdmin = user.role === 'admin';
   const { data, isLoading, isError, refetch } = useClients();
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState(null);
@@ -17,9 +20,13 @@ export function ClientsScreen() {
     <div className="mx-auto max-w-4xl p-9">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="text-muted-foreground">{data ? `${data.length} ${data.length === 1 ? 'person' : 'people'} in your care` : ''}</p>
-          <h1 className="mt-1 text-3xl text-forest">Your clients</h1>
-          <p className="mt-1 text-muted-foreground">Stay close to the progress that matters.</p>
+          <p className="text-muted-foreground">
+            {data ? `${data.length} ${data.length === 1 ? 'person' : 'people'}${isAdmin ? ' across the business' : ' in your care'}` : ''}
+          </p>
+          <h1 className="mt-1 text-3xl text-forest">{isAdmin ? 'All clients' : 'Your clients'}</h1>
+          <p className="mt-1 text-muted-foreground">
+            {isAdmin ? 'Every client on the platform, across every dietitian.' : "Stay close to the progress that matters."}
+          </p>
         </div>
       </div>
 
@@ -45,7 +52,13 @@ export function ClientsScreen() {
         <EmptyState
           icon={Users}
           title={data?.length ? 'No clients match' : 'No clients yet'}
-          description={data?.length ? 'Try a different search.' : 'Clients assigned to you will show up here.'}
+          description={
+            data?.length
+              ? 'Try a different search.'
+              : isAdmin
+                ? 'Clients will show up here once added, via Manage users or self-registration.'
+                : 'Clients assigned to you will show up here.'
+          }
         />
       ) : (
         <div className="grid gap-2">

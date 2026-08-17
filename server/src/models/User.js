@@ -27,11 +27,11 @@ export async function findUserById(id) {
   return mapUser(rows[0]);
 }
 
-export async function createUser({ name, email, passwordHash, role, phone = null }) {
+export async function createUser({ name, email, passwordHash, role, phone = null, assignedDietitian = null }) {
   const id = newId();
   await pool.query(
-    'INSERT INTO users (id, name, email, password_hash, role, phone) VALUES (?, ?, ?, ?, ?, ?)',
-    [id, name, email, passwordHash, role, phone]
+    'INSERT INTO users (id, name, email, password_hash, role, phone, assigned_dietitian_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    [id, name, email, passwordHash, role, phone, assignedDietitian]
   );
   return findUserById(id);
 }

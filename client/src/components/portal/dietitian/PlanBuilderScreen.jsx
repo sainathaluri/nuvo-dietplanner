@@ -6,24 +6,30 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/portal/shared/EmptyState';
-import { useClients } from '@/hooks/useClients';
+import { useAuth } from '@/hooks/useAuth';
+import { useClients, useDietitians } from '@/hooks/useClients';
 import { useRecipes } from '@/hooks/useRecipes';
 import { useCreatePlan, usePlanForWeek, useUpdatePlan } from '@/hooks/usePlans';
 import { createBlankMeal, startOfWeek, toApiMeal, toLocalMeal } from '@/lib/planBuilder';
+import { cn } from '@/lib/utils';
 import { ScheduleRow } from './ScheduleRow';
 import { RecipeRail } from './RecipeRail';
 
 const SAVE_LABEL = { idle: '', saving: 'Saving…', saved: 'Saved', error: "Couldn't save" };
 
 export function PlanBuilderScreen() {
+  const { user } = useAuth();
+  const isAdmin = user.role === 'admin';
   const clientsQuery = useClients();
   const recipesQuery = useRecipes();
+  const dietitiansQuery = useDietitians(isAdmin);
 
   const [clientId, setClientId] = useState('');
   const [week, setWeek] = useState(() => startOfWeek());
   const [title, setTitle] = useState('');
   const [meals, setMeals] = useState([]);
   const [planId, setPlanId] = useState(null);
+  const [dietitianId, setDietitianId] = useState('');
   const [saveState, setSaveState] = useState('idle');
 
   const dirtyRef = useRef(false);
@@ -35,6 +41,10 @@ export function PlanBuilderScreen() {
   const clients = clientsQuery.data ?? [];
   const recipes = recipesQuery.data ?? [];
   const selectedClient = clients.find((c) => c._id === clientId);
+  // Admin must pick a dietitian to author a brand-new plan as (the server derives it
+  // automatically for a dietitian caller, but requires it explicitly from admin — see
+  // plan.controller.js#createPlan). Once a plan exists its dietitian is fixed, not editable here.
+  const needsDietitianChoice = isAdmin && !planId && !dietitianId;
 
   // Default to the first client once the list loads. Depends on clientsQuery.data (a stable
   // reference from React Query) rather than the `clients` fallback array, which is a fresh `[]`
@@ -51,10 +61,13 @@ export function PlanBuilderScreen() {
       setPlanId(planQuery.plan._id);
       setTitle(planQuery.plan.title);
       setMeals(planQuery.plan.meals.map(toLocalMeal));
+      setDietitianId(planQuery.plan.dietitian ?? '');
     } else {
       setPlanId(null);
       setTitle(selectedClient ? `${selectedClient.name}'s weekly nourish plan` : 'Weekly nourish plan');
       setMeals([createBlankMeal()]);
+      // Default to the client's own assigned dietitian, if they have one — admin can still change it.
+      setDietitianId(selectedClient?.assignedDietitian ?? '');
     }
     setSaveState('idle');
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -73,7 +86,7 @@ export function PlanBuilderScreen() {
       );
     } else {
       createPlan.mutate(
-        { client: clientId, week, ...payload },
+        { client: clientId, week, dietitian: isAdmin ? dietitianId : undefined, ...payload },
         {
           onSuccess: (plan) => {
             setPlanId(plan._id);
@@ -90,13 +103,14 @@ export function PlanBuilderScreen() {
     setMeals(nextMeals);
   }
 
-  // Autosave: debounce 800ms after the last edit.
+  // Autosave: debounce 800ms after the last edit. Skipped (silently, not an error toast) while
+  // admin hasn't picked a dietitian yet for a brand-new plan — save() would 400 without one.
   useEffect(() => {
-    if (!dirtyRef.current) return;
+    if (!dirtyRef.current || needsDietitianChoice) return;
     saveTimerRef.current = setTimeout(() => save(), 800);
     return () => clearTimeout(saveTimerRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, meals]);
+  }, [title, meals, needsDietitianChoice]);
 
   function updateMeal(localId, patch) {
     markDirty(meals.map((m) => (m.localId === localId ? { ...m, ...patch } : m)));
@@ -141,10 +155,14 @@ export function PlanBuilderScreen() {
                 toast.error('Add at least one meal first.');
                 return;
               }
+              if (needsDietitianChoice) {
+                toast.error('Choose a dietitian for this plan first.');
+                return;
+              }
               save({ published: true });
               toast.success("Weekly plan published — your client can now see it.");
             }}
-            disabled={!clientId || meals.length === 0}
+            disabled={!clientId || meals.length === 0 || needsDietitianChoice}
             className="rounded-full bg-coral text-white hover:bg-coral/90"
           >
             Publish weekly plan →
@@ -160,7 +178,7 @@ export function PlanBuilderScreen() {
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <div className="grid gap-5 min-[1050px]:grid-cols-[minmax(0,1fr)_330px]">
             <section className="rounded-card bg-white p-6 shadow-soft">
-              <div className="grid grid-cols-1 gap-3 border-b border-line pb-5 min-[650px]:grid-cols-3">
+              <div className={cn('grid grid-cols-1 gap-3 border-b border-line pb-5 min-[650px]:grid-cols-3', isAdmin && 'min-[900px]:grid-cols-4')}>
                 <label className="block text-xs font-bold text-muted-foreground">
                   Client
                   <Select value={clientId} onValueChange={setClientId}>
@@ -176,6 +194,23 @@ export function PlanBuilderScreen() {
                     </SelectContent>
                   </Select>
                 </label>
+                {isAdmin && (
+                  <label className="block text-xs font-bold text-muted-foreground">
+                    Dietitian
+                    <Select value={dietitianId} onValueChange={setDietitianId} disabled={Boolean(planId)}>
+                      <SelectTrigger className="mt-1.5 w-full">
+                        <SelectValue placeholder="Choose a dietitian" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(dietitiansQuery.data ?? []).map((d) => (
+                          <SelectItem key={d._id} value={d._id}>
+                            {d.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </label>
+                )}
                 <label className="block text-xs font-bold text-muted-foreground">
                   Week starts
                   <Input type="date" value={week} onChange={(e) => setWeek(e.target.value)} className="mt-1.5" />

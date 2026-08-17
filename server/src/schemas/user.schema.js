@@ -3,6 +3,7 @@ import { z } from 'zod';
 export const updateMeSchema = z.object({
   name: z.string().min(1).optional(),
   phone: z.string().optional(),
+  assignedDietitian: z.string().min(1).nullable().optional(),
 });
 
 export const updateUserSchema = z.object({
@@ -17,4 +18,5 @@ export const createUserSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
   role: z.enum(['client', 'dietitian', 'admin']),
+  assignedDietitian: z.string().min(1).nullable().optional(),
 });

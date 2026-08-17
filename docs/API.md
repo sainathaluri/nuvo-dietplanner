@@ -19,11 +19,11 @@ means the controller filters to resources owned by / assigned to the caller.
 
 | Method | Path | Auth | Payload → Response |
 |---|---|---|---|
-| GET | `/users` | admin, dietitian | `?role=&assignedDietitian=` → `[user]` |
+| GET | `/users` | admin, dietitian, client | `?role=&assignedDietitian=` → `[user]` — dietitian is forced to own clients; client is forced to `role=dietitian` (directory browse only, ignores other filters) |
 | GET | `/users/:id` | admin, dietitian(own), self | → `{user}` |
-| PATCH | `/users/me` | Auth | `{name?, phone?}` → `{user}` |
-| PATCH | `/users/:id` | admin | `{role?, assignedDietitian?, ...}` → `{user}` |
-| POST | `/users` | admin | `{name, email, password, role}` → `{user}` |
+| PATCH | `/users/me` | Auth | `{name?, phone?, assignedDietitian?}` → `{user}` — `assignedDietitian` settable only by clients, and only to a real `role:dietitian` id (`400` otherwise) |
+| PATCH | `/users/:id` | admin | `{role?, assignedDietitian?, ...}` → `{user}` — `assignedDietitian` validated against a real `role:dietitian` id |
+| POST | `/users` | admin | `{name, email, password, role, assignedDietitian?}` → `{user}` — `assignedDietitian` only applied when `role:client`, validated as above |
 
 ## Enquiries — `enquiry.routes.js`
 

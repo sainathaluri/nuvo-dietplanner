@@ -1,7 +1,33 @@
 # Progress
 
-Last updated: 2026-08-16 (first live deployment). For the detailed day-by-day build
-journal, see `docs/worklog/` — this file is the current-state summary; the worklog is the history.
+Last updated: 2026-08-17 (full end-to-end pass — every role's flow clicked through in a real
+browser, both remaining functional gaps closed). For the detailed day-by-day build journal, see
+`docs/worklog/` — this file is the current-state summary; the worklog is the history.
+
+**Update, 2026-08-17 (session 2): closed both remaining functional gaps and did a real
+end-to-end browser pass across all three roles.** The dietitian Overview dashboard was still the
+Phase-1 placeholder even though its backend endpoint and client hook already existed — built the
+real screen (today's calls, client count, clients list). The admin weekly-plan-builder gap was a
+real broken path, not a nicety: `plans.dietitian_id` is `NOT NULL` and admin creating a plan
+without an explicit `dietitian` would 500 — added a required Dietitian picker to the builder for
+admin only, defaulted from the client's own assignment. Fixed a shared-screen copy bug ("Your
+clients" shown to admin, who sees *all* clients). Then actually drove the real installed Chrome
+(via `playwright-core`, since the Claude-in-Chrome extension is still never connected in this
+environment) through every screen in all three roles plus the public enquiry funnel, and caught one
+real bug purely from a screenshot: the full-size progress chart's Y-axis was clipping the leading
+digit of every decimal weight label ("70.8kg" rendered as "0.8kg") — a narrow `YAxis width` losing
+to SVG clipping at the container edge, invisible from reading the code or from a text-content
+assertion. Fixed. Full account, including what was verified and how, in
+`docs/worklog/2026-08-17.md`'s Session 2.
+
+**Update, 2026-08-17 (session 1): admin can now create and manage users directly, and clients can
+choose their own dietitian.** `/app/users` (admin-only) lists every account with role-tab filtering
+and lets admin create a client/dietitian/admin account or edit an existing one's role and
+dietitian assignment; the client Overview has a "Your dietitian" card that prompts an unassigned
+client to pick one from a live directory, or shows/lets them change their current one. Backend:
+`GET /users` now also serves clients (forced to a dietitian-only directory, never other
+clients/admins), and every write path that sets `assignedDietitian` validates the target is a real
+`role:dietitian` account, not just any user id. Full account in `docs/worklog/2026-08-17.md`.
 
 **Update, 2026-08-16: the app is live in production for the first time.** Client on Netlify
 (`nevo-diet-planner.netlify.app`) → server on Render (`nourishly-api.onrender.com`) → MySQL on
@@ -73,15 +99,23 @@ This week's meals (day tabs, mark-eaten, request-swap), My progress (recharts we
 milestones, log-a-new-entry), Calls (book/reschedule/cancel), Reports (upload + read the
 dietitian's feedback thread).
 
-**Dietitian portal** — Recipe library (search/filter/CRUD), Weekly plan builder (`@dnd-kit`
-drag-and-drop from a recipe rail onto meal slots, autosave, publish — every dropzone is *also* an
-independent accessible `Select`, not drag-only), Clients list with a lazy-loaded detail drawer,
-Schedule calls, Report reviews (reply to a client's feedback thread).
+**Dietitian portal** — Dashboard (today's calls, client count, recently-logged-progress count,
+today's calls list, clients list — replaced the placeholder 2026-08-17), Recipe library
+(search/filter/CRUD), Weekly plan builder (`@dnd-kit` drag-and-drop from a recipe rail onto meal
+slots, autosave, publish — every dropzone is *also* an independent accessible `Select`, not
+drag-only; admin sees an additional required Dietitian picker, a dietitian caller doesn't),
+Clients list with a lazy-loaded detail drawer, Schedule calls, Report reviews (reply to a client's
+feedback thread).
 
 **Admin portal** — Business overview KPIs, Enquiry pipeline as a kanban with real drag-and-drop
 *and* per-card dropdown status transitions (same accessible dual-path pattern as the plan
 builder), Growth insights (real 8-week enquiry volume, pipeline-stage breakdown, and dietitian
-workload charts — no more empty placeholders).
+workload charts — no more empty placeholders), **Manage users** (create client/dietitian/admin
+accounts, edit an existing user's role and dietitian assignment — added 2026-08-17).
+
+**Client ↔ dietitian assignment** — a client can browse the dietitian directory and pick (or
+change) who they work with from their Overview screen; admin can also assign/reassign a client to
+a dietitian from Manage users. Added 2026-08-17.
 
 **Deploy & polish** — `server/Dockerfile`, `client/netlify.toml` (SPA redirects), root `README.md`
 with Netlify/Render/Railway steps and a production `.env` checklist, route-level code splitting
@@ -111,6 +145,13 @@ worklog for each day's full reasoning):
   UTC-vs-local-time bug fixed once in Phase 8 turned out to exist in two more places
   (`planBuilder.js`, `seed.js`), breaking the plan builder's schedule entirely for any client with
   a seeded plan. Both caught only by actually opening the app in a real browser — see above.
+- **2026-08-17**: a *different* bug in the same `WeightTrendChart.jsx` component the 2026-08-11 fix
+  touched — the full-size Progress screen's Y-axis was clipping the leading digit of every decimal
+  tick label ("70.8kg" rendered as "0.8kg") because `width={36}` wasn't enough room for a 6-char
+  label combined with that variant's zero left margin, so recharts positioned the text past the
+  container's clipped edge. Only visible with real decimal weight data in a real screenshot — a
+  text-content assertion wouldn't have caught it, since the text was technically present in the
+  DOM, just visually truncated. Fixed by widening to `48`.
 
 ## Known gaps (flagged, not silently decided)
 
@@ -118,12 +159,18 @@ worklog for each day's full reasoning):
   independent confirmation of the enquiry kanban's drag specifically (only inferred working from
   the plan builder's identical underlying mechanism) — see `docs/worklog/2026-08-11.md`.
 - The marketing site itself is still the Phase 1 scaffold placeholder, not the ported
-  `legacy/index.html` — Phase 2 was never actually done as a dedicated phase.
-- Dietitian's own Overview dashboard is still a placeholder (client and admin have real ones).
-- Admin can't fully use the weekly plan builder yet — `createPlan` needs an explicit `dietitian`
-  field that only admin (not the derived dietitian-caller path) must supply, and the builder UI
-  has no dietitian-picker.
-- No production-safe first-admin bootstrap flow — `npm run seed` is the dev-only stand-in.
+  `legacy/index.html` — Phase 2 was never actually done as a dedicated phase. This is the one
+  remaining gap across the whole app as of 2026-08-17; everything else in this list below it is
+  either resolved, a deliberate call, or infra/ops rather than app functionality. The enquiry modal
+  the homepage launches *does* work end-to-end (verified 2026-08-17) — it's specifically the visual
+  page around it that's unported.
+- No production-safe first-admin bootstrap flow — `npm run seed` is the dev-only stand-in (the
+  admin "Manage users" screen lets an existing admin create more admins, but doesn't help bootstrap
+  the very first one).
+- A keyboard-only (Tab/Space, no mouse) pass of the admin Manage-users dialogs and the client
+  dietitian-picker dialog specifically hasn't been done — they use the same Radix `Dialog`/`Select`
+  primitives already keyboard-accessible elsewhere in the app, but that hasn't been independently
+  re-confirmed for these three. See `docs/worklog/2026-08-17.md` session 2.
 - Report file storage is local disk (`server/uploads/`), which is ephemeral on most PaaS hosts —
   fine for a demo, needs S3/R2 (or a persistent disk) for real use.
 - No automated test suite.
@@ -151,6 +198,14 @@ worklog for each day's full reasoning):
 
 One line per work session, newest first. Links to `docs/worklog/YYYY-MM-DD.md`.
 
+- [2026-08-17](worklog/2026-08-17.md) — **Session 2**: built the real dietitian dashboard
+  (replacing the placeholder), added the required admin dietitian-picker to the plan builder
+  (closing a real 500-on-create bug), fixed an admin/dietitian shared-screen copy bug, then clicked
+  through all three roles plus the public enquiry funnel in a real browser (`playwright-core` +
+  system Chrome) and fixed a real Y-axis label-clipping bug in the progress chart found via
+  screenshot. **Session 1**: admin can create/manage users (client, dietitian, admin accounts) from
+  a new `/app/users` screen, and clients can browse dietitians and pick/change who they work with
+  from Overview; backend `assignedDietitian` writes validate the target is a real dietitian.
 - [2026-08-16](worklog/2026-08-16.md) — Committed and pushed the MySQL migration that had sat
   uncommitted since 2026-08-12; fixed a local `node --watch` restart loop that was causing login
   connection resets; prepped `render.yaml` for deploy (added then reverted a persistent disk for

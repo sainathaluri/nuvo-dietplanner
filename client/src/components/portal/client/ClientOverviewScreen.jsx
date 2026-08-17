@@ -13,6 +13,7 @@ import { TodayMealCard } from './TodayMealCard';
 import { NextCallCard } from './NextCallCard';
 import { ProgressSnapshotCard } from './ProgressSnapshotCard';
 import { QuickUploadCard } from './QuickUploadCard';
+import { DietitianCard } from './DietitianCard';
 
 export function ClientOverviewScreen() {
   const { user } = useAuth();
@@ -86,6 +87,8 @@ export function ClientOverviewScreen() {
             />
           </div>
         </section>
+
+        <DietitianCard />
 
         <NextCallCard call={nextCall} isLoading={callsQuery.isLoading} />
 

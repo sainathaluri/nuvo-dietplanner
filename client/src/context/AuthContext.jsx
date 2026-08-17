@@ -39,7 +39,13 @@ export function AuthProvider({ children }) {
     setUser(null);
   }, []);
 
+  // Lets a mutation that returns the updated user (e.g. PATCH /users/me) keep this context in
+  // sync without a full page reload.
+  const updateUser = useCallback((updated) => setUser(updated), []);
+
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, register, logout }}>{children}</AuthContext.Provider>
+    <AuthContext.Provider value={{ user, isLoading, login, register, logout, updateUser }}>
+      {children}
+    </AuthContext.Provider>
   );
 }

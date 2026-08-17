@@ -14,6 +14,7 @@ export const listUsers = asyncHandler(async (req, res) => {
   const filter = {};
   if (req.query.role) filter.role = req.query.role;
   if (req.user.role === 'dietitian') filter.assignedDietitian = req.user.id;
+  else if (req.user.role === 'client') filter.role = 'dietitian'; // clients may only browse the dietitian directory
   else if (req.query.assignedDietitian) filter.assignedDietitian = req.query.assignedDietitian;
 
   const users = await queryUsers(filter);
@@ -32,20 +33,46 @@ export const getUser = asyncHandler(async (req, res) => {
 });
 
 export const updateMe = asyncHandler(async (req, res) => {
+  const { assignedDietitian } = req.body;
+  if (assignedDietitian !== undefined) {
+    if (req.user.role !== 'client') throw ApiError.forbidden('Only clients can choose a dietitian');
+    if (assignedDietitian !== null) {
+      const dietitian = await findUserById(assignedDietitian);
+      if (!dietitian || dietitian.role !== 'dietitian') throw ApiError.badRequest('Invalid dietitian');
+    }
+  }
+
   const user = await updateUserRecord(req.user.id, req.body);
   res.json(toClientShape(user, ['passwordHash']));
 });
 
 export const updateUser = asyncHandler(async (req, res) => {
+  const { assignedDietitian } = req.body;
+  if (assignedDietitian) {
+    const dietitian = await findUserById(assignedDietitian);
+    if (!dietitian || dietitian.role !== 'dietitian') throw ApiError.badRequest('Invalid dietitian');
+  }
+
   const user = await updateUserRecord(req.params.id, req.body);
   if (!user) throw ApiError.notFound('User not found');
   res.json(toClientShape(user, ['passwordHash']));
 });
 
 export const createUser = asyncHandler(async (req, res) => {
-  const { name, email, password, role } = req.body;
+  const { name, email, password, role, assignedDietitian = null } = req.body;
   if (await findUserByEmail(email)) throw ApiError.conflict('Email already registered');
 
-  const user = await createUserRecord({ name, email, passwordHash: await hashPassword(password), role });
+  if (assignedDietitian) {
+    const dietitian = await findUserById(assignedDietitian);
+    if (!dietitian || dietitian.role !== 'dietitian') throw ApiError.badRequest('Invalid dietitian');
+  }
+
+  const user = await createUserRecord({
+    name,
+    email,
+    passwordHash: await hashPassword(password),
+    role,
+    assignedDietitian: role === 'client' ? assignedDietitian : null,
+  });
   res.status(201).json(toClientShape(user, ['passwordHash']));
 });

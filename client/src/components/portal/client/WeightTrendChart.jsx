@@ -47,7 +47,11 @@ export function WeightTrendChart({ data, large = false }) {
           tick={{ fill: '#6f807a', fontSize: 11 }}
           axisLine={false}
           tickLine={false}
-          width={36}
+          // Wide enough for a 6-char label like "70.8kg" — the large variant's margin.left is 0,
+          // so anything narrower pushes the tick text past the container's left edge and it gets
+          // clipped there (visually "70.8kg" → "0.8kg"). Caught by looking at a real screenshot
+          // with real decimal weight data, not by reading the code.
+          width={48}
           tickFormatter={(v) => `${v}kg`}
         />
         <Tooltip content={<ChartTooltip />} cursor={{ stroke: '#679873', strokeWidth: 1, strokeDasharray: '4 4' }} />
