@@ -17,8 +17,15 @@ side polling) — no real push notifications and no telephony integration, both 
 table, which `schema.sql`'s `CREATE TABLE IF NOT EXISTS` can't backfill — added idempotent
 `ALTER TABLE` statements to `migrate.js` instead, verified by running the migration twice. Verified
 end-to-end against a real running server + database: created a recurring call, waited a real
-scheduler tick, confirmed the next occurrence appeared and the chain stayed self-limiting. Not yet
-verified in a real browser — see `docs/worklog/2026-08-19.md`.
+scheduler tick, confirmed the next occurrence appeared and the chain stayed self-limiting. **Then
+verified in a real browser too** (Claude in Chrome, connected and working for the first time on
+this project) — logged in as the seeded client and booked a real `Daily`/10-minute-reminder call
+through the actual UI, confirming the "Repeat"/"Remind me" selects and the reminder toast mechanism
+all work. That session also surfaced a real Claude-in-Chrome environment quirk worth knowing for
+future browser-automation work here: the automation tab reports `document.visibilityState:
+"hidden"` even while focused, which silently defeats both raw CDP mouse clicks (worked around with
+JS-dispatched `.click()`) and TanStack Query's `refetchInterval` polling (a real, if minor, known
+gap for backgrounded tabs — not a bug). Full account in `docs/worklog/2026-08-19.md`'s Session 2.
 
 **Update, 2026-08-17 (session 2): closed both remaining functional gaps and did a real
 end-to-end browser pass across all three roles.** The dietitian Overview dashboard was still the
@@ -215,8 +222,10 @@ worklog for each day's full reasoning):
 
 - Call auto-scheduling/reminders (2026-08-19) is testing-stage: the scheduler is a single-process
   `setInterval` (no queue/lock — fine for the one server instance this app runs), and reminders are
-  client-side polling + an in-app toast only, not a push notification or real phone call. Not yet
-  verified in a real browser.
+  client-side polling + an in-app toast only, not a push notification or real phone call. Now
+  verified in a real browser (client-side booking flow); the dietitian-side booking dialog and a
+  second (poll-driven, not invalidation-driven) reminder toast are the two pieces not yet
+  independently confirmed on screen — see `docs/worklog/2026-08-19.md` Session 2.
 
 ## Session index
 
