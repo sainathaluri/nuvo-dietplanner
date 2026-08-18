@@ -97,6 +97,12 @@ CREATE TABLE IF NOT EXISTS plan_meals (
   CONSTRAINT fk_plan_meals_recipe FOREIGN KEY (recipe_id) REFERENCES recipes(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- `frequency`/`reminder_minutes_before` back the testing-stage auto-scheduling feature: when a
+-- call's `frequency` isn't 'once', server/src/jobs/callScheduler.js rolls it forward into the next
+-- occurrence once `scheduled_at` passes, carrying the same time-of-day (the "preferred time") on
+-- to daily/weekly/etc — see that file for the generation + self-limiting-on-cancel logic.
+-- `recurrence_parent_id` links a generated occurrence back to the call it was rolled forward from,
+-- purely for display (e.g. "part of a recurring series") — it isn't used to drive generation.
 CREATE TABLE IF NOT EXISTS calls (
   id VARCHAR(36) PRIMARY KEY,
   client_id VARCHAR(36) NOT NULL,
@@ -104,13 +110,18 @@ CREATE TABLE IF NOT EXISTS calls (
   scheduled_at DATETIME(3) NOT NULL,
   status ENUM('scheduled', 'completed', 'cancelled') NOT NULL DEFAULT 'scheduled',
   notes TEXT,
+  frequency ENUM('once', 'daily', 'weekly', 'biweekly', 'monthly') NOT NULL DEFAULT 'once',
+  reminder_minutes_before INT NULL,
+  recurrence_parent_id VARCHAR(36) NULL,
   created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   KEY idx_calls_client (client_id),
   KEY idx_calls_dietitian (dietitian_id),
   KEY idx_calls_scheduled_at (scheduled_at),
+  KEY idx_calls_recurrence_parent (recurrence_parent_id),
   CONSTRAINT fk_calls_client FOREIGN KEY (client_id) REFERENCES users(id) ON DELETE CASCADE,
-  CONSTRAINT fk_calls_dietitian FOREIGN KEY (dietitian_id) REFERENCES users(id) ON DELETE CASCADE
+  CONSTRAINT fk_calls_dietitian FOREIGN KEY (dietitian_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_calls_recurrence_parent FOREIGN KEY (recurrence_parent_id) REFERENCES calls(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS progress (

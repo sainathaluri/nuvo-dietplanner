@@ -8,12 +8,16 @@ import { Button } from '@/components/ui/button';
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { CallScheduleFields } from '@/components/portal/shared/CallScheduleFields';
 import { useCreateCall, useUpdateCall } from '@/hooks/useCalls';
 import { toDatetimeLocalValue } from '@/lib/format';
+import { reminderValueToMinutes } from '@/lib/callScheduling';
 
 const bookSchema = z.object({
   scheduledAt: z.string().min(1, 'Choose a date and time'),
   notes: z.string().optional(),
+  frequency: z.string(),
+  reminderMinutesBefore: z.string(),
 });
 const rescheduleSchema = z.object({ scheduledAt: z.string().min(1, 'Choose a date and time') });
 
@@ -33,7 +37,7 @@ export function CallFormDialog({ open, onOpenChange, mode, call }) {
 
   const form = useForm({
     resolver: zodResolver(isReschedule ? rescheduleSchema : bookSchema),
-    defaultValues: { scheduledAt: defaultBookingTime(), notes: '' },
+    defaultValues: { scheduledAt: defaultBookingTime(), notes: '', frequency: 'once', reminderMinutesBefore: '30' },
   });
 
   useEffect(() => {
@@ -41,6 +45,8 @@ export function CallFormDialog({ open, onOpenChange, mode, call }) {
     form.reset({
       scheduledAt: isReschedule && call ? toDatetimeLocalValue(call.scheduledAt) : defaultBookingTime(),
       notes: '',
+      frequency: 'once',
+      reminderMinutesBefore: '30',
     });
   }, [open, isReschedule, call, form]);
 
@@ -62,7 +68,12 @@ export function CallFormDialog({ open, onOpenChange, mode, call }) {
     }
 
     createCall.mutate(
-      { scheduledAt, notes: values.notes || undefined },
+      {
+        scheduledAt,
+        notes: values.notes || undefined,
+        frequency: values.frequency,
+        reminderMinutesBefore: reminderValueToMinutes(values.reminderMinutesBefore),
+      },
       {
         onSuccess: () => {
           toast.success('Call booked — see you then!');
@@ -100,19 +111,22 @@ export function CallFormDialog({ open, onOpenChange, mode, call }) {
               )}
             />
             {!isReschedule && (
-              <FormField
-                control={form.control}
-                name="notes"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Anything you'd like to cover? (optional)</FormLabel>
-                    <FormControl>
-                      <Textarea rows={3} {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <>
+                <CallScheduleFields control={form.control} />
+                <FormField
+                  control={form.control}
+                  name="notes"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Anything you'd like to cover? (optional)</FormLabel>
+                      <FormControl>
+                        <Textarea rows={3} {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </>
             )}
 
             <Button type="submit" disabled={isPending} className="mt-1 w-full rounded-full bg-coral text-white hover:bg-coral/90">

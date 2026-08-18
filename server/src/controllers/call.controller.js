@@ -30,7 +30,7 @@ export const listCalls = asyncHandler(async (req, res) => {
 });
 
 export const createCall = asyncHandler(async (req, res) => {
-  let { client, dietitian, scheduledAt, notes } = req.body;
+  let { client, dietitian, scheduledAt, notes, frequency, reminderMinutesBefore } = req.body;
 
   if (req.user.role === 'client') {
     const me = await findUserById(req.user.id);
@@ -46,7 +46,7 @@ export const createCall = asyncHandler(async (req, res) => {
     throw ApiError.badRequest('client and dietitian are required');
   }
 
-  const call = await createCallRecord({ client, dietitian, scheduledAt, notes });
+  const call = await createCallRecord({ client, dietitian, scheduledAt, notes, frequency, reminderMinutesBefore });
   res.status(201).json(toClientShape(call));
 });
 
@@ -60,7 +60,7 @@ export const updateCall = asyncHandler(async (req, res) => {
   if (req.user.role === 'dietitian' && !isOwningDietitian) throw ApiError.forbidden();
 
   if (isOwningClient) {
-    const allowedKeys = new Set(['scheduledAt', 'status']);
+    const allowedKeys = new Set(['scheduledAt', 'status', 'reminderMinutesBefore']);
     if (Object.keys(req.body).some((key) => !allowedKeys.has(key))) {
       throw ApiError.forbidden('Clients may only reschedule or cancel a call');
     }

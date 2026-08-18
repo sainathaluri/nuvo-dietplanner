@@ -8,15 +8,19 @@ import { Button } from '@/components/ui/button';
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { CallScheduleFields } from '@/components/portal/shared/CallScheduleFields';
+import { ClientField } from './ClientField';
 import { useClients } from '@/hooks/useClients';
 import { useCreateCall, useUpdateCall } from '@/hooks/useCalls';
 import { toDatetimeLocalValue } from '@/lib/format';
+import { reminderValueToMinutes } from '@/lib/callScheduling';
 
 const scheduleSchema = z.object({
   client: z.string().min(1, 'Choose a client'),
   scheduledAt: z.string().min(1, 'Choose a date and time'),
   notes: z.string().optional(),
+  frequency: z.string(),
+  reminderMinutesBefore: z.string(),
 });
 const rescheduleSchema = z.object({ scheduledAt: z.string().min(1, 'Choose a date and time') });
 
@@ -37,7 +41,7 @@ export function DietitianCallFormDialog({ open, onOpenChange, mode, call }) {
 
   const form = useForm({
     resolver: zodResolver(isReschedule ? rescheduleSchema : scheduleSchema),
-    defaultValues: { client: '', scheduledAt: defaultTime(), notes: '' },
+    defaultValues: { client: '', scheduledAt: defaultTime(), notes: '', frequency: 'once', reminderMinutesBefore: '30' },
   });
 
   useEffect(() => {
@@ -46,6 +50,8 @@ export function DietitianCallFormDialog({ open, onOpenChange, mode, call }) {
       client: '',
       scheduledAt: isReschedule && call ? toDatetimeLocalValue(call.scheduledAt) : defaultTime(),
       notes: '',
+      frequency: 'once',
+      reminderMinutesBefore: '30',
     });
   }, [open, isReschedule, call, form]);
 
@@ -67,7 +73,13 @@ export function DietitianCallFormDialog({ open, onOpenChange, mode, call }) {
     }
 
     createCall.mutate(
-      { client: values.client, scheduledAt, notes: values.notes || undefined },
+      {
+        client: values.client,
+        scheduledAt,
+        notes: values.notes || undefined,
+        frequency: values.frequency,
+        reminderMinutesBefore: reminderValueToMinutes(values.reminderMinutesBefore),
+      },
       {
         onSuccess: () => {
           toast.success('Call scheduled.');
@@ -90,32 +102,7 @@ export function DietitianCallFormDialog({ open, onOpenChange, mode, call }) {
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} noValidate className="grid gap-4">
-            {!isReschedule && (
-              <FormField
-                control={form.control}
-                name="client"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Client</FormLabel>
-                    <Select value={field.value} onValueChange={field.onChange}>
-                      <FormControl>
-                        <SelectTrigger className="w-full">
-                          <SelectValue placeholder="Choose a client" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {(clientsQuery.data ?? []).map((c) => (
-                          <SelectItem key={c._id} value={c._id}>
-                            {c.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            )}
+            {!isReschedule && <ClientField control={form.control} clients={clientsQuery.data} />}
             <FormField
               control={form.control}
               name="scheduledAt"
@@ -130,19 +117,22 @@ export function DietitianCallFormDialog({ open, onOpenChange, mode, call }) {
               )}
             />
             {!isReschedule && (
-              <FormField
-                control={form.control}
-                name="notes"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Notes (optional)</FormLabel>
-                    <FormControl>
-                      <Textarea rows={3} {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <>
+                <CallScheduleFields control={form.control} />
+                <FormField
+                  control={form.control}
+                  name="notes"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Notes (optional)</FormLabel>
+                      <FormControl>
+                        <Textarea rows={3} {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </>
             )}
 
             <Button type="submit" disabled={isPending} className="mt-1 w-full rounded-full bg-coral text-white hover:bg-coral/90">

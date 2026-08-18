@@ -63,9 +63,21 @@ Each meal slot: `{day, time, mealType, recipe, completed, swapRequested}`.
 | Method | Path | Auth | Payload → Response |
 |---|---|---|---|
 | GET | `/calls` | Auth (own) | `?client=&from=&to=` (`client` further narrows a dietitian/admin's own results) → `[call]` (`dietitian`/`client` populated to `{_id, name}`) |
-| POST | `/calls` | client, dietitian, admin | client: `{scheduledAt, notes?}` (server derives `client`/`dietitian` from the caller's `assignedDietitian`, `400` if none set); dietitian: `{client, scheduledAt, notes?}` (server sets `dietitian` to self); admin: `{client, dietitian, scheduledAt, notes?}` → `{call}` |
-| PATCH | `/calls/:id` | dietitian(own), admin, client(own) | client may only send `{scheduledAt?}` (reschedule) or `{status: 'cancelled'}` (cancel) on a still-`scheduled` call — `403`/`400` otherwise; dietitian/admin → `{scheduledAt?, status?, notes?}` → `{call}` |
+| POST | `/calls` | client, dietitian, admin | client: `{scheduledAt, notes?, frequency?, reminderMinutesBefore?}` (server derives `client`/`dietitian` from the caller's `assignedDietitian`, `400` if none set); dietitian: `{client, scheduledAt, notes?, frequency?, reminderMinutesBefore?}` (server sets `dietitian` to self); admin: `{client, dietitian, scheduledAt, notes?, frequency?, reminderMinutesBefore?}` → `{call}` |
+| PATCH | `/calls/:id` | dietitian(own), admin, client(own) | client may only send `{scheduledAt?}` (reschedule), `{status: 'cancelled'}` (cancel), or `{reminderMinutesBefore?}` on a still-`scheduled` call — `403`/`400` otherwise; dietitian/admin → `{scheduledAt?, status?, notes?, frequency?, reminderMinutesBefore?}` → `{call}` |
 | DELETE | `/calls/:id` | dietitian, admin | → `204` |
+
+Each call: `{scheduledAt, status, notes, frequency, reminderMinutesBefore, recurrenceParentId}`.
+`frequency` is `'once' | 'daily' | 'weekly' | 'biweekly' | 'monthly'` — anything but `'once'` is a
+**testing-stage auto-scheduling feature**: `server/src/jobs/callScheduler.js` polls every 60s for
+scheduled recurring calls whose time has passed, inserts the next occurrence at the same
+time-of-day (the "preferred time"), and flips the original row's `frequency` back to `'once'` so it
+isn't picked up again — the new row carries recurrence forward. Cancelling a call before its time
+stops the chain (a `cancelled` row is never picked up). `reminderMinutesBefore` (minutes, or `null`
+for no reminder) drives an in-app pop-up reminder — see `client/src/hooks/useCallReminders.js`,
+which polls the caller's own calls client-side and fires a Sonner toast once per call when "now"
+enters its reminder window. No push notifications, no real telephony integration — see "Known
+gaps" below.
 
 ## Progress — `progress.routes.js`
 
@@ -100,3 +112,9 @@ Each report: `{client, fileName, filePath, note, status, feedback: [{author, aut
 - `attentionItems` on `/insights/dietitian-overview` still returns an empty placeholder — the
   dietitian-side overview dashboard itself is still unbuilt (Phase 5 placeholder), so there's no
   UI consuming this yet. `admin-overview`'s `growthSeries` is real as of Phase 8.
+- Call auto-scheduling/reminders (2026-08-19) is explicitly a testing-stage feature, not final:
+  the scheduler is an in-process `setInterval` (no queue, no lock — fine for the one server
+  instance this app runs, not for multiple instances), and reminders are client-side polling +
+  an in-app toast only, not a push notification or an actual phone call. "Preferred time" isn't a
+  separate field — it's just the time-of-day component of `scheduledAt`, carried forward
+  unchanged by each rolled-forward occurrence.

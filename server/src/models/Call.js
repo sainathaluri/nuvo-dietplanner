@@ -2,7 +2,13 @@ import { pool } from '../db/pool.js';
 import { newId } from '../db/id.js';
 import { buildSetClause } from '../db/helpers.js';
 
-const CALL_COLUMNS = { scheduledAt: 'scheduled_at', status: 'status', notes: 'notes' };
+const CALL_COLUMNS = {
+  scheduledAt: 'scheduled_at',
+  status: 'status',
+  notes: 'notes',
+  frequency: 'frequency',
+  reminderMinutesBefore: 'reminder_minutes_before',
+};
 
 // dietitianName is only present when the caller asked for it via populate() below — mirrors
 // Mongoose's .populate('dietitian', 'name') / .populate('client', 'name').
@@ -15,6 +21,9 @@ function mapCall(row) {
     scheduledAt: row.scheduled_at,
     status: row.status,
     notes: row.notes,
+    frequency: row.frequency,
+    reminderMinutesBefore: row.reminder_minutes_before,
+    recurrenceParentId: row.recurrence_parent_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -67,13 +76,33 @@ export async function findCallById(id) {
   return mapCall(rows[0]);
 }
 
-export async function createCall({ client, dietitian, scheduledAt, notes = null }) {
+export async function createCall({
+  client,
+  dietitian,
+  scheduledAt,
+  notes = null,
+  frequency = 'once',
+  reminderMinutesBefore = null,
+  recurrenceParentId = null,
+}) {
   const id = newId();
   await pool.query(
-    'INSERT INTO calls (id, client_id, dietitian_id, scheduled_at, notes) VALUES (?, ?, ?, ?, ?)',
-    [id, client, dietitian, scheduledAt, notes]
+    `INSERT INTO calls
+      (id, client_id, dietitian_id, scheduled_at, notes, frequency, reminder_minutes_before, recurrence_parent_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, client, dietitian, scheduledAt, notes, frequency, reminderMinutesBefore, recurrenceParentId]
   );
   return findCallById(id);
+}
+
+// Rolling-generation-only lookup for the scheduler (server/src/jobs/callScheduler.js): every call
+// still 'scheduled', still recurring, whose time has passed. Not scoped to any one client/dietitian
+// — the scheduler runs for the whole table on a timer.
+export async function listDueRecurringCalls() {
+  const [rows] = await pool.query(
+    "SELECT * FROM calls WHERE status = 'scheduled' AND frequency != 'once' AND scheduled_at <= NOW()"
+  );
+  return rows.map(mapCall);
 }
 
 export async function updateCallById(id, patch) {

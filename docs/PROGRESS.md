@@ -1,8 +1,24 @@
 # Progress
 
-Last updated: 2026-08-17 (full end-to-end pass — every role's flow clicked through in a real
-browser, both remaining functional gaps closed). For the detailed day-by-day build journal, see
-`docs/worklog/` — this file is the current-state summary; the worklog is the history.
+Last updated: 2026-08-19 (call auto-scheduling + reminders, testing-stage). For the detailed
+day-by-day build journal, see `docs/worklog/` — this file is the current-state summary; the
+worklog is the history.
+
+**Update, 2026-08-19: calls can now recur automatically and remind you before they start —
+explicitly a testing feature, scoped small on purpose.** Booking a call now has a "Repeat" select
+(daily/weekly/every 2 weeks/monthly) and a "Remind me" select (10/30/60/120 minutes before, or
+none). A new server-side job (`server/src/jobs/callScheduler.js`, a 60s `setInterval`) rolls a
+recurring call forward into its next occurrence — same time-of-day, i.e. the "preferred time" —
+once its scheduled time passes, and stops automatically the moment a call in the chain gets
+cancelled. Reminders are an in-app Sonner pop-up (`client/src/hooks/useCallReminders.js`, client-
+side polling) — no real push notifications and no telephony integration, both flagged in
+`docs/API.md`'s known gaps rather than silently assumed. `calls.frequency`/
+`reminder_minutes_before` needed a schema change to a database that already had the old `calls`
+table, which `schema.sql`'s `CREATE TABLE IF NOT EXISTS` can't backfill — added idempotent
+`ALTER TABLE` statements to `migrate.js` instead, verified by running the migration twice. Verified
+end-to-end against a real running server + database: created a recurring call, waited a real
+scheduler tick, confirmed the next occurrence appeared and the chain stayed self-limiting. Not yet
+verified in a real browser — see `docs/worklog/2026-08-19.md`.
 
 **Update, 2026-08-17 (session 2): closed both remaining functional gaps and did a real
 end-to-end browser pass across all three roles.** The dietitian Overview dashboard was still the
@@ -96,8 +112,9 @@ profile dropdown, 404 and Unauthorized pages.
 
 **Client portal** (role: client) — Overview (today's meals, next call, progress snapshot),
 This week's meals (day tabs, mark-eaten, request-swap), My progress (recharts weight trend,
-milestones, log-a-new-entry), Calls (book/reschedule/cancel), Reports (upload + read the
-dietitian's feedback thread).
+milestones, log-a-new-entry), Calls (book/reschedule/cancel, optional recurrence + in-app
+reminders — testing-stage, added 2026-08-19), Reports (upload + read the dietitian's feedback
+thread).
 
 **Dietitian portal** — Dashboard (today's calls, client count, recently-logged-progress count,
 today's calls list, clients list — replaced the placeholder 2026-08-17), Recipe library
@@ -194,10 +211,24 @@ worklog for each day's full reasoning):
   orphaned `node.exe` processes competing for CPU. Cleaned up during Phase 8; worth checking for
   again in any future session on this machine (`Get-Process node`).
 
+## Known gaps (flagged, not silently decided)
+
+- Call auto-scheduling/reminders (2026-08-19) is testing-stage: the scheduler is a single-process
+  `setInterval` (no queue/lock — fine for the one server instance this app runs), and reminders are
+  client-side polling + an in-app toast only, not a push notification or real phone call. Not yet
+  verified in a real browser.
+
 ## Session index
 
 One line per work session, newest first. Links to `docs/worklog/YYYY-MM-DD.md`.
 
+- [2026-08-19](worklog/2026-08-19.md) — Added recurring call auto-scheduling (rolls a call forward
+  to its next occurrence at the same time-of-day once its time passes, stops on cancel) and in-app
+  pop-up reminders (Sonner toast, client-side polling), both explicitly scoped as a testing feature
+  per the user's request. Schema change to `calls` needed idempotent `ALTER TABLE`s in `migrate.js`
+  since `schema.sql` alone can't backfill an existing table. Verified end-to-end against a real
+  running server/database (not just build/lint) — created a recurring call, waited a real 60s
+  scheduler tick, confirmed correct rollover and self-limiting-on-cancel behavior.
 - [2026-08-17](worklog/2026-08-17.md) — **Session 2**: built the real dietitian dashboard
   (replacing the placeholder), added the required admin dietitian-picker to the plan builder
   (closing a real 500-on-create bug), fixed an admin/dietitian shared-screen copy bug, then clicked
