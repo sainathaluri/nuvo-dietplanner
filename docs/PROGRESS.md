@@ -1,10 +1,22 @@
 # Progress
 
-Last updated: 2026-08-19 (call auto-scheduling + reminders, testing-stage). For the detailed
-day-by-day build journal, see `docs/worklog/` — this file is the current-state summary; the
-worklog is the history.
+Last updated: 2026-08-19 (production deploy verification + a real login-breaking CORS bug fixed).
+For the detailed day-by-day build journal, see `docs/worklog/` — this file is the current-state
+summary; the worklog is the history.
 
-**Update, 2026-08-19: calls can now recur automatically and remind you before they start —
+**Update, 2026-08-19 (session 3): the production deploy was actually broken — every login on the
+live site has failed since the Netlify domain got renamed, and nobody had caught it.** Render's
+`CLIENT_ORIGIN` env var still pointed at `nevo-diet-planner.netlify.app` (a 404) while the real live
+site is `nevo-dietplanner.netlify.app` (no hyphen) — the API worked fine over `curl`, but the
+browser silently dropped every response as a CORS failure, surfacing as "Can't reach the server
+right now." Fixed via the Render dashboard (env var + redeploy), verified with a real login and a
+real recurring-call booking against production afterward. Also ran Session 1's pending `calls`
+table migration against the live Railway MySQL database for the first time (it had only ever been
+tested against dev) — Netlify and Render were both already auto-deployed on the right commit, so
+the database was the only piece actually behind. Full account, including a near-miss where a
+misclick almost deleted a Railway env var, in `docs/worklog/2026-08-19.md`'s Session 3.
+
+**Update, 2026-08-19 (session 1-2): calls can now recur automatically and remind you before they start —
 explicitly a testing feature, scoped small on purpose.** Booking a call now has a "Repeat" select
 (daily/weekly/every 2 weeks/monthly) and a "Remind me" select (10/30/60/120 minutes before, or
 none). A new server-side job (`server/src/jobs/callScheduler.js`, a 60s `setInterval`) rolls a
@@ -231,7 +243,11 @@ worklog for each day's full reasoning):
 
 One line per work session, newest first. Links to `docs/worklog/YYYY-MM-DD.md`.
 
-- [2026-08-19](worklog/2026-08-19.md) — Added recurring call auto-scheduling (rolls a call forward
+- [2026-08-19](worklog/2026-08-19.md) — **Session 3**: found and fixed a real production bug
+  (Render's `CLIENT_ORIGIN` pointed at a 404'd domain, silently breaking every live-site login via
+  CORS since the Netlify rename), ran the pending `calls` migration against production Railway
+  MySQL for the first time, and verified login + a recurring-call booking against the real deployed
+  app. **Sessions 1-2**: added recurring call auto-scheduling (rolls a call forward
   to its next occurrence at the same time-of-day once its time passes, stops on cancel) and in-app
   pop-up reminders (Sonner toast, client-side polling), both explicitly scoped as a testing feature
   per the user's request. Schema change to `calls` needed idempotent `ALTER TABLE`s in `migrate.js`
