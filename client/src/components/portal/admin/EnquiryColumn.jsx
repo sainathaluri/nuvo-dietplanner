@@ -2,7 +2,7 @@ import { useDroppable } from '@dnd-kit/core';
 import { cn } from '@/lib/utils';
 import { EnquiryCard } from './EnquiryCard';
 
-export function EnquiryColumn({ status, label, enquiries, onStatusChange, pendingId }) {
+export function EnquiryColumn({ status, label, enquiries, onStatusChange, onOpenDetail, pendingId }) {
   const { isOver, setNodeRef } = useDroppable({ id: status });
 
   return (
@@ -22,7 +22,8 @@ export function EnquiryColumn({ status, label, enquiries, onStatusChange, pendin
             key={enquiry._id}
             enquiry={enquiry}
             isPending={pendingId === enquiry._id}
-            onStatusChange={(status) => onStatusChange(enquiry._id, status)}
+            onStatusChange={(status) => onStatusChange(enquiry, status)}
+            onOpenDetail={() => onOpenDetail(enquiry)}
           />
         ))}
       </div>

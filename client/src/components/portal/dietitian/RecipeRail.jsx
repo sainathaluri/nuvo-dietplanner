@@ -1,14 +1,23 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
+import { FIXED_RECIPE_CATEGORIES } from '@/lib/recipeCategories';
 import { RecipeRailCard } from './RecipeRailCard';
-
-const FILTERS = ['All', 'Breakfast', 'Lunch', 'Snack', 'Dinner'];
 
 export function RecipeRail({ recipes }) {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('All');
+
+  // The 4 fixed categories always show as anchor tabs; any custom category present in `recipes`
+  // (the full set — filtering below is client-side only) is appended after them.
+  const filters = useMemo(() => {
+    const extra = new Set();
+    for (const recipe of recipes) {
+      if (!FIXED_RECIPE_CATEGORIES.includes(recipe.mealType)) extra.add(recipe.mealType);
+    }
+    return ['All', ...FIXED_RECIPE_CATEGORIES, ...[...extra].sort()];
+  }, [recipes]);
 
   const visible = recipes.filter(
     (r) => (filter === 'All' || r.mealType === filter) && r.title.toLowerCase().includes(search.toLowerCase())
@@ -34,7 +43,7 @@ export function RecipeRail({ recipes }) {
       />
 
       <div className="mt-2.5 flex gap-1.5 overflow-x-auto pb-2">
-        {FILTERS.map((type) => (
+        {filters.map((type) => (
           <button
             key={type}
             type="button"

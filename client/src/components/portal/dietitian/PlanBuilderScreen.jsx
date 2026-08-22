@@ -10,7 +10,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useClients, useDietitians } from '@/hooks/useClients';
 import { useRecipes } from '@/hooks/useRecipes';
 import { useCreatePlan, usePlanForWeek, useUpdatePlan } from '@/hooks/usePlans';
-import { createBlankMeal, startOfWeek, toApiMeal, toLocalMeal } from '@/lib/planBuilder';
+import { createBlankMeal, endOfWeek, startOfWeek, toApiMeal, toLocalMeal } from '@/lib/planBuilder';
 import { cn } from '@/lib/utils';
 import { ScheduleRow } from './ScheduleRow';
 import { RecipeRail } from './RecipeRail';
@@ -34,6 +34,22 @@ export function PlanBuilderScreen() {
 
   const dirtyRef = useRef(false);
   const saveTimerRef = useRef(null);
+  // Guards against the autosave race where the old value reappears: saveInFlightRef/pendingSaveRef
+  // serialize saves so at most one PATCH is ever outstanding (a second edit during an in-flight
+  // save queues a follow-up instead of firing an overlapping request); mealsRef/titleRef/planIdRef
+  // mirror state so an async save always reads the truly-latest values, not a stale closure;
+  // lastSavedRef is the rollback target on failure; lastHydratedKeyRef distinguishes "the same
+  // plan query re-resolved in the background" (must not clobber in-progress edits) from "the user
+  // switched client/week" (must re-seed regardless of dirty state).
+  const saveInFlightRef = useRef(false);
+  const pendingSaveRef = useRef(null);
+  const mealsRef = useRef(meals);
+  const titleRef = useRef(title);
+  const planIdRef = useRef(planId);
+  const lastSavedRef = useRef({ title: '', meals: [] });
+  const lastHydratedKeyRef = useRef(null);
+  mealsRef.current = meals;
+  titleRef.current = title;
   const planQuery = usePlanForWeek(clientId || null, week);
   const createPlan = useCreatePlan();
   const updatePlan = useUpdatePlan();
@@ -54,47 +70,89 @@ export function PlanBuilderScreen() {
   }, [clientId, clientsQuery.data]);
 
   // Hydrate local editable state whenever the loaded plan (or selected client/week) changes.
+  // A background refetch of the SAME client/week (triggered by the save mutation's own
+  // invalidateQueries) must never clobber edits made since the last successful save — only a
+  // genuine switch to a different client/week re-seeds while dirty/in-flight.
   useEffect(() => {
     if (planQuery.isLoading || !clientId) return;
+    const selectionKey = `${clientId}|${week}`;
+    const isSameSelection = lastHydratedKeyRef.current === selectionKey;
+    if (isSameSelection && (dirtyRef.current || saveInFlightRef.current)) return;
+    lastHydratedKeyRef.current = selectionKey;
     dirtyRef.current = false;
+
+    let nextTitle;
+    let nextMeals;
     if (planQuery.plan) {
       setPlanId(planQuery.plan._id);
-      setTitle(planQuery.plan.title);
-      setMeals(planQuery.plan.meals.map(toLocalMeal));
+      planIdRef.current = planQuery.plan._id;
+      nextTitle = planQuery.plan.title;
+      nextMeals = planQuery.plan.meals.map(toLocalMeal);
+      setTitle(nextTitle);
+      setMeals(nextMeals);
       setDietitianId(planQuery.plan.dietitian ?? '');
     } else {
       setPlanId(null);
-      setTitle(selectedClient ? `${selectedClient.name}'s weekly nourish plan` : 'Weekly nourish plan');
-      setMeals([createBlankMeal()]);
+      planIdRef.current = null;
+      nextTitle = selectedClient ? `${selectedClient.name}'s weekly nourish plan` : 'Weekly nourish plan';
+      nextMeals = [createBlankMeal()];
+      setTitle(nextTitle);
+      setMeals(nextMeals);
       // Default to the client's own assigned dietitian, if they have one — admin can still change it.
       setDietitianId(selectedClient?.assignedDietitian ?? '');
     }
+    lastSavedRef.current = { title: nextTitle, meals: nextMeals };
     setSaveState('idle');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [planQuery.plan, clientId, week]);
 
-  function save(extra = {}) {
+  // Serialized, awaited autosave: at most one PATCH/POST is ever in flight. An edit that arrives
+  // while a save is already outstanding is queued (pendingSaveRef) and re-sent — with the latest
+  // meals/title, read via refs — the moment the in-flight one finishes, instead of firing a second
+  // overlapping request that could land at the DB out of order and silently overwrite the newer edit.
+  async function save(extra = {}) {
     if (!clientId) return;
     clearTimeout(saveTimerRef.current);
-    setSaveState('saving');
-    const payload = { title, meals: meals.map(toApiMeal), ...extra };
 
-    if (planId) {
-      updatePlan.mutate(
-        { planId, ...payload },
-        { onSuccess: () => setSaveState('saved'), onError: () => setSaveState('error') }
-      );
-    } else {
-      createPlan.mutate(
-        { client: clientId, week, dietitian: isAdmin ? dietitianId : undefined, ...payload },
-        {
-          onSuccess: (plan) => {
-            setPlanId(plan._id);
-            setSaveState('saved');
-          },
-          onError: () => setSaveState('error'),
-        }
-      );
+    if (saveInFlightRef.current) {
+      pendingSaveRef.current = extra;
+      return;
+    }
+
+    saveInFlightRef.current = true;
+    setSaveState('saving');
+    const payload = { title: titleRef.current, meals: mealsRef.current.map(toApiMeal), ...extra };
+
+    try {
+      if (planIdRef.current) {
+        await updatePlan.mutateAsync({ planId: planIdRef.current, ...payload });
+      } else {
+        const plan = await createPlan.mutateAsync({
+          client: clientId,
+          week,
+          weekEnd: endOfWeek(week),
+          dietitian: isAdmin ? dietitianId : undefined,
+          ...payload,
+        });
+        setPlanId(plan._id);
+        planIdRef.current = plan._id;
+      }
+      lastSavedRef.current = { title: titleRef.current, meals: mealsRef.current };
+      dirtyRef.current = false;
+      setSaveState('saved');
+    } catch {
+      setTitle(lastSavedRef.current.title);
+      setMeals(lastSavedRef.current.meals);
+      dirtyRef.current = false;
+      setSaveState('error');
+      toast.error("That didn't save — your last saved version was restored.");
+    } finally {
+      saveInFlightRef.current = false;
+      if (pendingSaveRef.current !== null) {
+        const queuedExtra = pendingSaveRef.current;
+        pendingSaveRef.current = null;
+        save(queuedExtra);
+      }
     }
   }
 
@@ -178,7 +236,7 @@ export function PlanBuilderScreen() {
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <div className="grid gap-5 min-[1050px]:grid-cols-[minmax(0,1fr)_330px]">
             <section className="rounded-card bg-white p-6 shadow-soft">
-              <div className={cn('grid grid-cols-1 gap-3 border-b border-line pb-5 min-[650px]:grid-cols-3', isAdmin && 'min-[900px]:grid-cols-4')}>
+              <div className={cn('grid grid-cols-1 gap-3 border-b border-line pb-5 min-[650px]:grid-cols-4', isAdmin && 'min-[900px]:grid-cols-5')}>
                 <label className="block text-xs font-bold text-muted-foreground">
                   Client
                   <Select value={clientId} onValueChange={setClientId}>
@@ -212,8 +270,12 @@ export function PlanBuilderScreen() {
                   </label>
                 )}
                 <label className="block text-xs font-bold text-muted-foreground">
-                  Week starts
+                  Week start date
                   <Input type="date" value={week} onChange={(e) => setWeek(e.target.value)} className="mt-1.5" />
+                </label>
+                <label className="block text-xs font-bold text-muted-foreground">
+                  Week end date
+                  <Input type="date" value={endOfWeek(week)} disabled className="mt-1.5" />
                 </label>
                 <label className="block text-xs font-bold text-muted-foreground">
                   Plan title

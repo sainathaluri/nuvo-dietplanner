@@ -1,6 +1,6 @@
 import { createContext, useCallback, useEffect, useState } from 'react';
 import { setAccessToken } from '../api/tokenStore';
-import { loginRequest, logoutRequest, meRequest, refreshRequest, registerRequest } from '../api/auth.api';
+import { loginRequest, changePasswordRequest, logoutRequest, meRequest, refreshRequest } from '../api/auth.api';
 
 export const AuthContext = createContext(null);
 
@@ -26,8 +26,8 @@ export function AuthProvider({ children }) {
     return user;
   }, []);
 
-  const register = useCallback(async (payload) => {
-    const { user, accessToken } = await registerRequest(payload);
+  const changePassword = useCallback(async (payload) => {
+    const { user, accessToken } = await changePasswordRequest(payload);
     setAccessToken(accessToken);
     setUser(user);
     return user;
@@ -44,7 +44,7 @@ export function AuthProvider({ children }) {
   const updateUser = useCallback((updated) => setUser(updated), []);
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, register, logout, updateUser }}>
+    <AuthContext.Provider value={{ user, isLoading, login, changePassword, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

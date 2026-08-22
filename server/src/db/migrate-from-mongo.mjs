@@ -102,15 +102,18 @@ async function migratePlans(conn, db) {
   const docs = await db.collection('plans').find().toArray();
   let mealCount = 0;
   for (const doc of docs) {
+    const weekEnd = new Date(doc.week);
+    weekEnd.setUTCDate(weekEnd.getUTCDate() + 6);
     await conn.query(
-      `INSERT INTO plans (id, client_id, dietitian_id, title, week, published, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO plans (id, client_id, dietitian_id, title, week, week_end, published, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         oid(doc._id),
         oid(doc.client),
         oid(doc.dietitian),
         doc.title,
         doc.week,
+        weekEnd,
         !!doc.published,
         doc.createdAt,
         doc.updatedAt,

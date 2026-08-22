@@ -6,10 +6,9 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/portal/shared/EmptyState';
 import { useRecipes } from '@/hooks/useRecipes';
 import { cn } from '@/lib/utils';
+import { FIXED_RECIPE_CATEGORIES } from '@/lib/recipeCategories';
 import { RecipeCard } from './RecipeCard';
 import { RecipeFormDialog } from './RecipeFormDialog';
-
-const MEAL_TYPES = ['All', 'Breakfast', 'Lunch', 'Snack', 'Dinner'];
 
 export function RecipesScreen() {
   const [mealType, setMealType] = useState('All');
@@ -20,6 +19,18 @@ export function RecipesScreen() {
   const { data, isLoading, isError, refetch } = useRecipes(
     mealType === 'All' ? undefined : { mealType }
   );
+
+  // The 4 fixed categories always show as anchor tabs; any custom category found in the
+  // currently-loaded recipes is appended after them — same derive-from-data approach the tags
+  // filter below already uses, with the same limitation (a custom category not present in the
+  // current filter's results won't show as a tab until "All" is selected again).
+  const mealTypeTabs = useMemo(() => {
+    const extra = new Set();
+    for (const recipe of data ?? []) {
+      if (!FIXED_RECIPE_CATEGORIES.includes(recipe.mealType)) extra.add(recipe.mealType);
+    }
+    return ['All', ...FIXED_RECIPE_CATEGORIES, ...[...extra].sort()];
+  }, [data]);
 
   const allTags = useMemo(() => {
     const tags = new Set();
@@ -55,7 +66,7 @@ export function RecipesScreen() {
         />
 
         <div className="flex flex-wrap gap-1.5">
-          {MEAL_TYPES.map((type) => (
+          {mealTypeTabs.map((type) => (
             <button
               key={type}
               type="button"

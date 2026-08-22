@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -6,67 +6,60 @@ import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
-import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { CallScheduleFields } from '@/components/portal/shared/CallScheduleFields';
+import { CallReminderField } from '@/components/portal/shared/CallReminderField';
+import { SlotPicker, todayDateValue } from '@/components/portal/shared/SlotPicker';
 import { ClientField } from './ClientField';
 import { useClients } from '@/hooks/useClients';
+import { useAuth } from '@/hooks/useAuth';
 import { useCreateCall, useUpdateCall } from '@/hooks/useCalls';
-import { toDatetimeLocalValue } from '@/lib/format';
 import { reminderValueToMinutes } from '@/lib/callScheduling';
 
 const scheduleSchema = z.object({
   client: z.string().min(1, 'Choose a client'),
-  scheduledAt: z.string().min(1, 'Choose a date and time'),
+  scheduledAt: z.string().min(1, 'Choose an available time'),
   notes: z.string().optional(),
-  frequency: z.string(),
   reminderMinutesBefore: z.string(),
 });
-const rescheduleSchema = z.object({ scheduledAt: z.string().min(1, 'Choose a date and time') });
+const rescheduleSchema = z.object({ scheduledAt: z.string().min(1, 'Choose an available time') });
 
-function defaultTime() {
-  const d = new Date();
-  d.setDate(d.getDate() + 2);
-  d.setHours(10, 0, 0, 0);
-  return toDatetimeLocalValue(d);
+function dateOnly(isoString) {
+  return isoString ? isoString.slice(0, 10) : todayDateValue();
 }
 
 // mode: 'schedule' (new call, pick a client) | 'reschedule' (change scheduledAt on an existing one)
 export function DietitianCallFormDialog({ open, onOpenChange, mode, call }) {
   const isReschedule = mode === 'reschedule';
+  const { user } = useAuth();
   const clientsQuery = useClients();
   const createCall = useCreateCall();
   const updateCall = useUpdateCall();
   const isPending = isReschedule ? updateCall.isPending : createCall.isPending;
+  const [date, setDate] = useState(todayDateValue());
 
   const form = useForm({
     resolver: zodResolver(isReschedule ? rescheduleSchema : scheduleSchema),
-    defaultValues: { client: '', scheduledAt: defaultTime(), notes: '', frequency: 'once', reminderMinutesBefore: '30' },
+    defaultValues: { client: '', scheduledAt: '', notes: '', reminderMinutesBefore: '30' },
   });
 
   useEffect(() => {
     if (!open) return;
-    form.reset({
-      client: '',
-      scheduledAt: isReschedule && call ? toDatetimeLocalValue(call.scheduledAt) : defaultTime(),
-      notes: '',
-      frequency: 'once',
-      reminderMinutesBefore: '30',
-    });
+    const scheduledAt = isReschedule && call ? call.scheduledAt : '';
+    form.reset({ client: '', scheduledAt, notes: '', reminderMinutesBefore: '30' });
+    setDate(dateOnly(scheduledAt));
   }, [open, isReschedule, call, form]);
 
   function onSubmit(values) {
-    const scheduledAt = new Date(values.scheduledAt).toISOString();
-
     if (isReschedule) {
       updateCall.mutate(
-        { callId: call._id, scheduledAt },
+        { callId: call._id, scheduledAt: values.scheduledAt },
         {
           onSuccess: () => {
             toast.success('Call rescheduled.');
             onOpenChange(false);
           },
-          onError: () => toast.error("We couldn't reschedule that — please try again."),
+          onError: (error) =>
+            toast.error(error.response?.data?.error || "We couldn't reschedule that — please try again."),
         }
       );
       return;
@@ -75,9 +68,8 @@ export function DietitianCallFormDialog({ open, onOpenChange, mode, call }) {
     createCall.mutate(
       {
         client: values.client,
-        scheduledAt,
+        scheduledAt: values.scheduledAt,
         notes: values.notes || undefined,
-        frequency: values.frequency,
         reminderMinutesBefore: reminderValueToMinutes(values.reminderMinutesBefore),
       },
       {
@@ -85,7 +77,7 @@ export function DietitianCallFormDialog({ open, onOpenChange, mode, call }) {
           toast.success('Call scheduled.');
           onOpenChange(false);
         },
-        onError: () => toast.error("We couldn't schedule that — please try again."),
+        onError: (error) => toast.error(error.response?.data?.error || "We couldn't schedule that — please try again."),
       }
     );
   }
@@ -96,7 +88,7 @@ export function DietitianCallFormDialog({ open, onOpenChange, mode, call }) {
         <DialogHeader>
           <DialogTitle>{isReschedule ? 'Reschedule call' : 'Schedule a call'}</DialogTitle>
           <DialogDescription>
-            {isReschedule ? 'Pick a new time for this check-in.' : 'Book a check-in with one of your clients.'}
+            {isReschedule ? 'Pick a new available time for this check-in.' : 'Book a check-in with one of your clients.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -110,7 +102,14 @@ export function DietitianCallFormDialog({ open, onOpenChange, mode, call }) {
                 <FormItem>
                   <FormLabel>Date &amp; time</FormLabel>
                   <FormControl>
-                    <Input type="datetime-local" {...field} />
+                    <SlotPicker
+                      dietitianId={user._id}
+                      excludeCallId={isReschedule ? call?._id : undefined}
+                      date={date}
+                      onDateChange={setDate}
+                      value={field.value}
+                      onChange={field.onChange}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -118,7 +117,7 @@ export function DietitianCallFormDialog({ open, onOpenChange, mode, call }) {
             />
             {!isReschedule && (
               <>
-                <CallScheduleFields control={form.control} />
+                <CallReminderField control={form.control} />
                 <FormField
                   control={form.control}
                   name="notes"

@@ -62,7 +62,12 @@ export function LoginPage() {
             name="password"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Password</FormLabel>
+                <div className="flex items-center justify-between">
+                  <FormLabel>Password</FormLabel>
+                  <Link to="/forgot-password" className="text-xs font-semibold text-forest hover:underline">
+                    Forgot your password?
+                  </Link>
+                </div>
                 <FormControl>
                   <Input type="password" autoComplete="current-password" {...field} />
                 </FormControl>
@@ -86,13 +91,6 @@ export function LoginPage() {
           </Button>
         </form>
       </Form>
-
-      <p className="mt-6 text-sm text-muted-foreground">
-        New to Nourishly?{' '}
-        <Link to="/register" className="font-semibold text-forest hover:underline">
-          Create an account
-        </Link>
-      </p>
     </AuthLayout>
   );
 }

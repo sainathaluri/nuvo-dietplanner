@@ -12,6 +12,16 @@ export function useCurrentPlan(clientId) {
   return { ...query, plan: query.data?.[0] ?? null };
 }
 
+// Every plan a client has (not just the current week) — the client profile's meal history can
+// span more than one weekly plan document once "last 15 days" crosses a week boundary.
+export function useClientPlans(clientId) {
+  return useQuery({
+    queryKey: ['plans', clientId, 'all'],
+    queryFn: () => listPlansRequest({ client: clientId }),
+    enabled: Boolean(clientId),
+  });
+}
+
 // The plan builder needs the plan for one exact week (not just "most recent") — null clientId or
 // week disables the query (nothing selected yet in the builder).
 export function usePlanForWeek(clientId, week) {

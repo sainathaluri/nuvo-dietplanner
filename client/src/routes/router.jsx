@@ -11,7 +11,9 @@ const lazyNamed = (loader, name) => lazy(() => loader().then((m) => ({ default: 
 
 const HomePage = lazyNamed(() => import('@/pages/HomePage'), 'HomePage');
 const LoginPage = lazyNamed(() => import('@/pages/LoginPage'), 'LoginPage');
-const RegisterPage = lazyNamed(() => import('@/pages/RegisterPage'), 'RegisterPage');
+const ForgotPasswordPage = lazyNamed(() => import('@/pages/ForgotPasswordPage'), 'ForgotPasswordPage');
+const ResetPasswordPage = lazyNamed(() => import('@/pages/ResetPasswordPage'), 'ResetPasswordPage');
+const ChangePasswordPage = lazyNamed(() => import('@/pages/ChangePasswordPage'), 'ChangePasswordPage');
 const NotFoundPage = lazyNamed(() => import('@/pages/NotFoundPage'), 'NotFoundPage');
 const UnauthorizedPage = lazyNamed(() => import('@/pages/UnauthorizedPage'), 'UnauthorizedPage');
 
@@ -20,10 +22,13 @@ const OverviewPage = lazyNamed(() => import('@/pages/app/OverviewPage'), 'Overvi
 const MealsPage = lazyNamed(() => import('@/pages/app/MealsPage'), 'MealsPage');
 const ProgressPage = lazyNamed(() => import('@/pages/app/ProgressPage'), 'ProgressPage');
 const CallsPage = lazyNamed(() => import('@/pages/app/CallsPage'), 'CallsPage');
+const MessagesPage = lazyNamed(() => import('@/pages/app/MessagesPage'), 'MessagesPage');
 const ReportsPage = lazyNamed(() => import('@/pages/app/ReportsPage'), 'ReportsPage');
 const ClientsPage = lazyNamed(() => import('@/pages/app/ClientsPage'), 'ClientsPage');
+const ClientProfilePage = lazyNamed(() => import('@/pages/app/ClientProfilePage'), 'ClientProfilePage');
 const UsersPage = lazyNamed(() => import('@/pages/app/UsersPage'), 'UsersPage');
 const PlanPage = lazyNamed(() => import('@/pages/app/PlanPage'), 'PlanPage');
+const PlansPage = lazyNamed(() => import('@/pages/app/PlansPage'), 'PlansPage');
 const RecipesPage = lazyNamed(() => import('@/pages/app/RecipesPage'), 'RecipesPage');
 const EnquiriesPage = lazyNamed(() => import('@/pages/app/EnquiriesPage'), 'EnquiriesPage');
 const InsightsPage = lazyNamed(() => import('@/pages/app/InsightsPage'), 'InsightsPage');
@@ -42,8 +47,13 @@ export const router = createBrowserRouter([
     children: [
       { path: '/', element: <HomePage /> },
       { path: '/login', element: <LoginPage /> },
-      { path: '/register', element: <RegisterPage /> },
+      { path: '/forgot-password', element: <ForgotPasswordPage /> },
+      { path: '/reset-password', element: <ResetPasswordPage /> },
       { path: '/unauthorized', element: <UnauthorizedPage /> },
+      {
+        element: <ProtectedRoute />,
+        children: [{ path: '/change-password', element: <ChangePasswordPage /> }],
+      },
       {
         path: '/app',
         element: <ProtectedRoute />,
@@ -56,10 +66,15 @@ export const router = createBrowserRouter([
               guarded('meals', <MealsPage />),
               guarded('progress', <ProgressPage />),
               guarded('calls', <CallsPage />),
+              guarded('messages', <MessagesPage />),
               guarded('reports', <ReportsPage />),
               guarded('clients', <ClientsPage />),
+              // Not a nav entry (reached by clicking a client, not the sidebar) but guarded by the
+              // same roles as the clients list itself — see ROUTE_ROLES in portalNav.js.
+              { element: <RoleRoute roles={ROUTE_ROLES.clients} />, children: [{ path: 'clients/:id', element: <ClientProfilePage /> }] },
               guarded('users', <UsersPage />),
               guarded('plan', <PlanPage />),
+              guarded('plans', <PlansPage />),
               guarded('recipes', <RecipesPage />),
               guarded('enquiries', <EnquiriesPage />),
               guarded('insights', <InsightsPage />),

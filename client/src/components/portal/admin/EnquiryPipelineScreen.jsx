@@ -1,29 +1,55 @@
+import { useState } from 'react';
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core';
 import { toast } from 'sonner';
 import { Inbox } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/portal/shared/EmptyState';
 import { useEnquiries, useUpdateEnquiry } from '@/hooks/useEnquiries';
+import { STATUS_LABEL } from '@/lib/enquiryStatus';
 import { EnquiryColumn } from './EnquiryColumn';
+import { EnquiryDetailDrawer } from './EnquiryDetailDrawer';
+import { EnquiryContactedDialog } from './EnquiryContactedDialog';
+import { EnquiryClosedDialog } from './EnquiryClosedDialog';
+import { EnquiryFollowUpDialog } from './EnquiryFollowUpDialog';
+import { EnquiryConvertedDialog } from './EnquiryConvertedDialog';
 
-const COLUMNS = [
-  { status: 'new', label: 'New enquiry' },
-  { status: 'contacted', label: 'Contacted' },
-  { status: 'follow-up', label: 'Follow-up' },
-  { status: 'converted', label: 'Converted' },
-  { status: 'closed', label: 'Closed' },
-];
+const COLUMNS = Object.keys(STATUS_LABEL).map((status) => ({ status, label: STATUS_LABEL[status] }));
+
+// Statuses that need to collect something (a note, a reason, a schedule) before the transition can
+// go through open a dialog instead of firing immediately. 'new' has nothing to collect, so it
+// stays an immediate move — matching the existing drag/dropdown behavior for that one status.
+// 'converted' is special-cased in requestStatusChange below: it only opens a dialog when the
+// enquiry doesn't already have a client account (from an earlier Follow-up) — otherwise it's just
+// a label change, same as 'new'.
+const DIALOG_FOR_STATUS = {
+  contacted: EnquiryContactedDialog,
+  closed: EnquiryClosedDialog,
+  'follow-up': EnquiryFollowUpDialog,
+  converted: EnquiryConvertedDialog,
+};
 
 export function EnquiryPipelineScreen() {
   const { data, isLoading, isError, refetch } = useEnquiries();
   const updateEnquiry = useUpdateEnquiry();
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }), useSensor(KeyboardSensor));
 
+  const [pendingTransition, setPendingTransition] = useState(null); // { enquiry, status } | null
+  const [detailEnquiry, setDetailEnquiry] = useState(null);
+
   const enquiries = data?.enquiries ?? [];
 
-  function moveTo(enquiryId, status) {
+  function requestStatusChange(enquiry, status) {
+    if (status === enquiry.status) return;
+    // Converted only needs its dialog (plan/duration/password) the first time an enquiry gets a
+    // client account — if Follow-up already created one, this is just a label change.
+    const skipDialog = status === 'converted' && Boolean(enquiry.convertedUserId);
+    const DialogComponent = skipDialog ? null : DIALOG_FOR_STATUS[status];
+    if (DialogComponent) {
+      setPendingTransition({ enquiry, status });
+      return;
+    }
     updateEnquiry.mutate(
-      { enquiryId, status },
+      { enquiryId: enquiry._id, status },
       { onError: () => toast.error("That didn't save — please try again.") }
     );
   }
@@ -32,9 +58,11 @@ export function EnquiryPipelineScreen() {
     const { active, over } = event;
     if (!over) return;
     const enquiry = active.data.current?.enquiry;
-    if (!enquiry || enquiry.status === over.id) return;
-    moveTo(enquiry._id, over.id);
+    if (!enquiry) return;
+    requestStatusChange(enquiry, over.id);
   }
+
+  const PendingDialog = pendingTransition ? DIALOG_FOR_STATUS[pendingTransition.status] : null;
 
   return (
     <div className="mx-auto max-w-6xl p-9">
@@ -68,12 +96,23 @@ export function EnquiryPipelineScreen() {
                 label={label}
                 enquiries={enquiries.filter((e) => e.status === status)}
                 pendingId={updateEnquiry.isPending ? updateEnquiry.variables?.enquiryId : null}
-                onStatusChange={moveTo}
+                onStatusChange={requestStatusChange}
+                onOpenDetail={setDetailEnquiry}
               />
             ))}
           </div>
         </DndContext>
       )}
+
+      {PendingDialog && (
+        <PendingDialog
+          open={Boolean(pendingTransition)}
+          onOpenChange={(open) => !open && setPendingTransition(null)}
+          enquiry={pendingTransition.enquiry}
+        />
+      )}
+
+      <EnquiryDetailDrawer enquiry={detailEnquiry} onOpenChange={(open) => !open && setDetailEnquiry(null)} />
     </div>
   );
 }

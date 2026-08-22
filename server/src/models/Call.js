@@ -6,8 +6,9 @@ const CALL_COLUMNS = {
   scheduledAt: 'scheduled_at',
   status: 'status',
   notes: 'notes',
-  frequency: 'frequency',
   reminderMinutesBefore: 'reminder_minutes_before',
+  originalScheduledAt: 'original_scheduled_at',
+  rescheduledAt: 'rescheduled_at',
 };
 
 // dietitianName is only present when the caller asked for it via populate() below — mirrors
@@ -21,9 +22,9 @@ function mapCall(row) {
     scheduledAt: row.scheduled_at,
     status: row.status,
     notes: row.notes,
-    frequency: row.frequency,
     reminderMinutesBefore: row.reminder_minutes_before,
-    recurrenceParentId: row.recurrence_parent_id,
+    originalScheduledAt: row.original_scheduled_at,
+    rescheduledAt: row.rescheduled_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -65,8 +66,10 @@ export async function listCalls(filter = {}) {
   return rows.map(mapCall);
 }
 
-export async function findCallById(id) {
-  const [rows] = await pool.query(
+// conn defaults to the pool but accepts a transaction connection (see availabilityGuard.js) so a
+// caller can read back a row it just inserted before that transaction commits.
+export async function findCallById(id, conn = pool) {
+  const [rows] = await conn.query(
     `SELECT c.*, du.name AS dietitian_name
      FROM calls c
      JOIN users du ON du.id = c.dietitian_id
@@ -76,41 +79,67 @@ export async function findCallById(id) {
   return mapCall(rows[0]);
 }
 
-export async function createCall({
-  client,
-  dietitian,
-  scheduledAt,
-  notes = null,
-  frequency = 'once',
-  reminderMinutesBefore = null,
-  recurrenceParentId = null,
-}) {
+export async function createCall(
+  { client, dietitian, scheduledAt, notes = null, reminderMinutesBefore = null },
+  conn = pool
+) {
   const id = newId();
-  await pool.query(
+  await conn.query(
     `INSERT INTO calls
-      (id, client_id, dietitian_id, scheduled_at, notes, frequency, reminder_minutes_before, recurrence_parent_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [id, client, dietitian, scheduledAt, notes, frequency, reminderMinutesBefore, recurrenceParentId]
+      (id, client_id, dietitian_id, scheduled_at, notes, reminder_minutes_before)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [id, client, dietitian, scheduledAt, notes, reminderMinutesBefore]
   );
-  return findCallById(id);
+  return findCallById(id, conn);
 }
 
-// Rolling-generation-only lookup for the scheduler (server/src/jobs/callScheduler.js): every call
-// still 'scheduled', still recurring, whose time has passed. Not scoped to any one client/dietitian
-// — the scheduler runs for the whole table on a timer.
-export async function listDueRecurringCalls() {
-  const [rows] = await pool.query(
-    "SELECT * FROM calls WHERE status = 'scheduled' AND frequency != 'once' AND scheduled_at <= NOW()"
-  );
-  return rows.map(mapCall);
+// The concurrency-safe read behind the availability guard: locks every still-`scheduled` call for
+// this dietitian whose scheduled_at falls in (rangeStart, rangeEnd) so a concurrent transaction
+// requesting an overlapping slot blocks here until this one commits or rolls back (InnoDB next-key
+// locking on a `SELECT ... FOR UPDATE` indexed range, under the default REPEATABLE READ isolation
+// — see server/src/services/availabilityGuard.js for the full explanation). Must run inside the
+// same transaction as the eventual insert/update, hence the required `conn`.
+export async function lockOverlappingCalls(dietitianId, rangeStart, rangeEnd, { excludeCallId } = {}, conn = pool) {
+  const params = [dietitianId, rangeStart, rangeEnd];
+  // USE INDEX forces the (dietitian_id, scheduled_at) composite index rather than leaving it to
+  // the optimizer: on a small/lightly-populated table MySQL can otherwise pick the single-column
+  // idx_calls_dietitian index instead, which next-key-locks every row for this dietitian regardless
+  // of scheduled_at (verified via EXPLAIN) — real contention between unrelated, non-overlapping
+  // bookings for the same dietitian, not just a missed optimization.
+  let sql = `SELECT id, scheduled_at FROM calls USE INDEX (idx_calls_dietitian_scheduled)
+     WHERE dietitian_id = ? AND status = 'scheduled' AND scheduled_at > ? AND scheduled_at < ?`;
+  if (excludeCallId) {
+    sql += ' AND id != ?';
+    params.push(excludeCallId);
+  }
+  sql += ' FOR UPDATE';
+  const [rows] = await conn.query(sql, params);
+  return rows.map((row) => ({ id: row.id, scheduledAt: row.scheduled_at }));
 }
 
-export async function updateCallById(id, patch) {
+// Read-only sibling of lockOverlappingCalls — no FOR UPDATE, no transaction required — for
+// displaying a day's available slots (GET /calls/available-slots). This is purely informational:
+// the actual booking decision still goes through assertSlotAvailable's locked read at submit time,
+// so a slot shown here can still lose a race to another booking between viewing and submitting
+// (surfaced as the existing 409 conflict on submit).
+export async function listScheduledCallsOnDate(dietitianId, dayStart, dayEnd, { excludeCallId } = {}, conn = pool) {
+  const params = [dietitianId, dayStart, dayEnd];
+  let sql = `SELECT id, scheduled_at FROM calls
+     WHERE dietitian_id = ? AND status = 'scheduled' AND scheduled_at >= ? AND scheduled_at < ?`;
+  if (excludeCallId) {
+    sql += ' AND id != ?';
+    params.push(excludeCallId);
+  }
+  const [rows] = await conn.query(sql, params);
+  return rows.map((row) => ({ id: row.id, scheduledAt: row.scheduled_at }));
+}
+
+export async function updateCallById(id, patch, conn = pool) {
   const { sets, params } = buildSetClause(CALL_COLUMNS, patch);
   if (sets.length) {
-    await pool.query(`UPDATE calls SET ${sets.join(', ')} WHERE id = ?`, [...params, id]);
+    await conn.query(`UPDATE calls SET ${sets.join(', ')} WHERE id = ?`, [...params, id]);
   }
-  return findCallById(id);
+  return findCallById(id, conn);
 }
 
 export async function deleteCallById(id) {

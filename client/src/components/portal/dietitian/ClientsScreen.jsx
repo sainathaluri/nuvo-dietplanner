@@ -1,18 +1,18 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Users } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/portal/shared/EmptyState';
 import { useAuth } from '@/hooks/useAuth';
 import { useClients } from '@/hooks/useClients';
-import { ClientDetailDrawer } from './ClientDetailDrawer';
 
 export function ClientsScreen() {
   const { user } = useAuth();
   const isAdmin = user.role === 'admin';
   const { data, isLoading, isError, refetch } = useClients();
   const [search, setSearch] = useState('');
-  const [selected, setSelected] = useState(null);
+  const navigate = useNavigate();
 
   const visible = (data ?? []).filter((c) => c.name.toLowerCase().includes(search.toLowerCase()));
 
@@ -66,7 +66,7 @@ export function ClientsScreen() {
             <button
               key={client._id}
               type="button"
-              onClick={() => setSelected(client)}
+              onClick={() => navigate(`/app/clients/${client._id}`)}
               className="flex items-center gap-3 rounded-card bg-white p-4 text-left shadow-soft transition-shadow hover:shadow-md"
             >
               <div className="grid size-9 shrink-0 place-items-center rounded-full bg-sage font-semibold text-forest">
@@ -80,8 +80,6 @@ export function ClientsScreen() {
           ))}
         </div>
       )}
-
-      <ClientDetailDrawer client={selected} onOpenChange={(open) => !open && setSelected(null)} />
     </div>
   );
 }

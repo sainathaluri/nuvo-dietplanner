@@ -13,6 +13,7 @@ function mapEnquiry(row) {
     preferredSlot: row.preferred_slot,
     note: row.note,
     status: row.status,
+    convertedUserId: row.converted_user_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -61,7 +62,10 @@ export async function findEnquiryById(id) {
 }
 
 export async function updateEnquiryById(id, patch) {
-  const { sets, params } = buildSetClause({ status: 'status', note: 'note' }, patch);
+  const { sets, params } = buildSetClause(
+    { status: 'status', note: 'note', convertedUserId: 'converted_user_id' },
+    patch
+  );
   if (sets.length) {
     await pool.query(`UPDATE enquiries SET ${sets.join(', ')} WHERE id = ?`, [...params, id]);
   }

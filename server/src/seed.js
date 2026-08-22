@@ -3,7 +3,9 @@ import { findUserByEmail, createUser, updateUser } from './models/User.js';
 import { findRecipesByTitles, createRecipe } from './models/Recipe.js';
 import { findPlanByClient, createPlan } from './models/Plan.js';
 import { createProgress } from './models/Progress.js';
-import { createCall } from './models/Call.js';
+import { createCall, updateCallById } from './models/Call.js';
+import { createClientNote } from './models/ClientNote.js';
+import { createMessage, markConversationRead } from './models/Message.js';
 import { createReport, addReportFeedback } from './models/Report.js';
 import { hashPassword } from './utils/password.js';
 
@@ -15,7 +17,7 @@ const SEED_USERS = [
   { name: 'Dana Dietitian', email: 'dietitian@nourishly.test', password: 'Password123!', role: 'dietitian' },
   { name: 'Cleo Client', email: 'client@nourishly.test', password: 'Password123!', role: 'client' },
   // A second client with no plan/progress/calls/reports yet — exercises the dietitian screens'
-  // empty states (client detail drawer, builder client-select) alongside Cleo's fully-seeded data.
+  // empty states (client profile page, builder client-select) alongside Cleo's fully-seeded data.
   { name: 'Priya Shah', email: 'client2@nourishly.test', password: 'Password123!', role: 'client' },
 ];
 
@@ -77,6 +79,10 @@ function startOfWeek(date) {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), diff));
 }
 
+function endOfWeek(weekStart) {
+  return new Date(Date.UTC(weekStart.getUTCFullYear(), weekStart.getUTCMonth(), weekStart.getUTCDate() + 6));
+}
+
 function daysAgo(n) {
   const d = new Date();
   d.setDate(d.getDate() - n);
@@ -104,49 +110,92 @@ async function seedDemoData(dietitian, client) {
   const [breakfast, lunch, dinner, snack] = recipes;
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   const meals = days.flatMap((day, i) => [
-    { day, time: '8:00 AM', mealType: 'Breakfast', recipe: breakfast.id, completed: i < 2 },
+    {
+      day,
+      time: '8:00 AM',
+      mealType: 'Breakfast',
+      recipe: breakfast.id,
+      completed: i < 2,
+      notes: i === 0 ? 'Client mentioned mild bloating — keep portion light this week.' : null,
+    },
     { day, time: '1:00 PM', mealType: 'Lunch', recipe: lunch.id, completed: i < 1 },
     { day, time: '7:30 PM', mealType: 'Dinner', recipe: i % 3 === 0 ? snack.id : dinner.id },
   ]);
 
+  const week = startOfWeek(new Date());
   await createPlan({
     client: client.id,
     dietitian: dietitian.id,
     title: "Cleo's weekly nourish plan",
-    week: startOfWeek(new Date()),
+    week,
+    weekEnd: endOfWeek(week),
     meals,
     published: true,
   });
   console.log('[seed] created demo weekly plan');
 
   const progressEntries = [
-    { date: daysAgo(35), weight: 72, energy: 5, adherence: 70 },
-    { date: daysAgo(28), weight: 71.1, energy: 6, adherence: 75 },
-    { date: daysAgo(21), weight: 70.2, energy: 6, adherence: 80 },
-    { date: daysAgo(14), weight: 69, energy: 7, adherence: 85 },
-    { date: daysAgo(7), weight: 68.4, energy: 7, adherence: 88 },
-    { date: daysAgo(1), weight: 67.8, energy: 8, adherence: 90 },
+    { date: daysAgo(35), weight: 72, waist: 84, hip: 102, thigh: 58, upperArm: 31, energy: 5, adherence: 70 },
+    { date: daysAgo(28), weight: 71.1, waist: 83, hip: 101, thigh: 57.5, upperArm: 30.5, energy: 6, adherence: 75 },
+    { date: daysAgo(21), weight: 70.2, waist: 82, hip: 100, thigh: 57, upperArm: 30.5, energy: 6, adherence: 80 },
+    { date: daysAgo(14), weight: 69, waist: 81, hip: 99, thigh: 56.5, upperArm: 30, energy: 7, adherence: 85 },
+    { date: daysAgo(7), weight: 68.4, waist: 80, hip: 98, thigh: 56, upperArm: 30, energy: 7, adherence: 88 },
+    { date: daysAgo(1), weight: 67.8, waist: 79, hip: 97, thigh: 55.5, upperArm: 29.5, energy: 8, adherence: 90 },
   ];
   for (const entry of progressEntries) {
     await createProgress({ ...entry, client: client.id });
   }
   console.log(`[seed] created ${progressEntries.length} demo progress entries`);
 
-  await createCall({
+  const upcomingCall = await createCall({
     client: client.id,
     dietitian: dietitian.id,
     scheduledAt: daysAgo(-2),
-    status: 'scheduled',
     notes: 'Progress check-in',
   });
-  await createCall({
+  // Demonstrates the reschedule-tracking columns (client profile Calls tab "Rescheduled" badge) —
+  // done directly against the model, mirroring exactly what call.controller.js#updateCall does on
+  // a genuine scheduledAt change, since the seed script talks to models, not the HTTP API.
+  await updateCallById(upcomingCall.id, {
+    scheduledAt: daysAgo(-5),
+    rescheduledAt: new Date(),
+    originalScheduledAt: upcomingCall.scheduledAt,
+  });
+  // createCall has no `status` param (new calls always start `scheduled` — see Call.js); marking
+  // this one `completed` for the demo goes through the same patch path a real "Mark complete"
+  // click would use.
+  const pastCall = await createCall({
     client: client.id,
     dietitian: dietitian.id,
     scheduledAt: daysAgo(10),
-    status: 'completed',
     notes: 'Initial consult',
   });
-  console.log('[seed] created demo calls (1 upcoming, 1 past)');
+  await updateCallById(pastCall.id, { status: 'completed' });
+  console.log('[seed] created demo calls (1 upcoming + rescheduled, 1 completed)');
+
+  await createClientNote({
+    client: client.id,
+    author: dietitian.id,
+    body: 'Prefers evening check-ins — works late shifts most weekdays.',
+  });
+  console.log('[seed] created demo client note');
+
+  // One read message (dietitian's greeting, already seen) and one unread (client's reply) — so
+  // the demo shows both a populated thread and a real unread badge/indicator on first login.
+  await createMessage({
+    client: client.id,
+    dietitian: dietitian.id,
+    sender: dietitian.id,
+    body: "Hi Cleo! Just checking in — how's the new plan feeling so far?",
+  });
+  await markConversationRead(client.id, dietitian.id, client.id);
+  await createMessage({
+    client: client.id,
+    dietitian: dietitian.id,
+    sender: client.id,
+    body: 'Going well, thank you! The breakfast options are much easier to stick to.',
+  });
+  console.log('[seed] created demo messages (1 read, 1 unread)');
 
   // filePath doesn't point to a real file in server/uploads/ — this is metadata-only seed data,
   // reports uploaded for real through the UI will have a working download link.

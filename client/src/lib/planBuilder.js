@@ -12,9 +12,16 @@ export function startOfWeek(date = new Date()) {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), diff)).toISOString().slice(0, 10);
 }
 
+// The diet week's end date — always exactly 6 days after its start. Same UTC-safe math as
+// startOfWeek, so the two stay consistent regardless of the caller's local timezone.
+export function endOfWeek(weekStart) {
+  const d = new Date(weekStart);
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 6)).toISOString().slice(0, 10);
+}
+
 let localId = 0;
 export function createBlankMeal(day = WEEKDAYS[0]) {
-  return { localId: `new-${++localId}`, day, time: '8:00 AM', mealType: 'Breakfast', recipeId: null };
+  return { localId: `new-${++localId}`, day, time: '8:00 AM', mealType: 'Breakfast', recipeId: null, notes: '' };
 }
 
 // Server meal slot → local editable row (adds a stable localId for React keys/dnd-kit ids since
@@ -26,10 +33,11 @@ export function toLocalMeal(meal) {
     time: meal.time,
     mealType: meal.mealType,
     recipeId: meal.recipe?._id ?? meal.recipe ?? null,
+    notes: meal.notes ?? '',
   };
 }
 
 // Local editable row → the shape the API expects.
-export function toApiMeal({ day, time, mealType, recipeId }) {
-  return { day, time, mealType, recipe: recipeId };
+export function toApiMeal({ day, time, mealType, recipeId, notes }) {
+  return { day, time, mealType, recipe: recipeId, notes: notes || null };
 }

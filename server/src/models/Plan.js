@@ -13,6 +13,7 @@ function mapPlan(row) {
     dietitian: row.dietitian_id,
     title: row.title,
     week: row.week,
+    weekEnd: row.week_end,
     published: !!row.published,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -27,6 +28,7 @@ function mapMeal(row, recipe) {
     recipe,
     completed: !!row.completed,
     swapRequested: !!row.swap_requested,
+    notes: row.notes,
   };
 }
 
@@ -128,22 +130,23 @@ async function insertMeals(conn, planId, meals) {
       meal.mealType,
       meal.recipe ?? null,
       meal.completed ?? false,
-      meal.swapRequested ?? false
+      meal.swapRequested ?? false,
+      meal.notes ?? null
     );
   });
-  const placeholders = meals.map(() => '(?, ?, ?, ?, ?, ?, ?, ?)').join(', ');
+  const placeholders = meals.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?)').join(', ');
   await conn.query(
-    `INSERT INTO plan_meals (plan_id, idx, day, time, meal_type, recipe_id, completed, swap_requested) VALUES ${placeholders}`,
+    `INSERT INTO plan_meals (plan_id, idx, day, time, meal_type, recipe_id, completed, swap_requested, notes) VALUES ${placeholders}`,
     values
   );
 }
 
-export async function createPlan({ client, dietitian, title, week, meals = [], published }) {
+export async function createPlan({ client, dietitian, title, week, weekEnd, meals = [], published }) {
   const id = newId();
   await withTransaction(async (conn) => {
     await conn.query(
-      'INSERT INTO plans (id, client_id, dietitian_id, title, week, published) VALUES (?, ?, ?, ?, ?, ?)',
-      [id, client, dietitian, title ?? 'Weekly nourish plan', week, published ?? false]
+      'INSERT INTO plans (id, client_id, dietitian_id, title, week, week_end, published) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [id, client, dietitian, title ?? 'Weekly nourish plan', week, weekEnd, published ?? false]
     );
     await insertMeals(conn, id, meals);
   });

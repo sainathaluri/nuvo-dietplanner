@@ -16,29 +16,47 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useCreateRecipe, useUpdateRecipe, useDeleteRecipe } from '@/hooks/useRecipes';
+import { RECIPE_CATEGORIES, FIXED_RECIPE_CATEGORIES } from '@/lib/recipeCategories';
 
-const MEAL_TYPES = ['Breakfast', 'Lunch', 'Snack', 'Dinner'];
+const schema = z
+  .object({
+    title: z.string().min(1, 'Enter a name'),
+    emoji: z.string().max(4).optional(),
+    category: z.enum(RECIPE_CATEGORIES),
+    customCategory: z.string().optional(),
+    prepTime: z.string().min(1, 'e.g. 15 min'),
+    tags: z.string().optional(),
+    kcal: z.union([z.coerce.number().positive(), z.literal('')]).optional(),
+    protein: z.union([z.coerce.number().positive(), z.literal('')]).optional(),
+    ingredients: z.string().min(1, 'List what clients need'),
+    instructions: z.string().min(1, 'Keep the steps clear'),
+  })
+  .refine((values) => values.category !== 'Custom' || values.customCategory?.trim(), {
+    message: 'Enter a category name',
+    path: ['customCategory'],
+  });
 
-const schema = z.object({
-  title: z.string().min(1, 'Enter a name'),
-  emoji: z.string().max(4).optional(),
-  mealType: z.enum(MEAL_TYPES),
-  prepTime: z.string().min(1, 'e.g. 15 min'),
-  tags: z.string().optional(),
-  kcal: z.union([z.coerce.number().positive(), z.literal('')]).optional(),
-  protein: z.union([z.coerce.number().positive(), z.literal('')]).optional(),
-  ingredients: z.string().min(1, 'List what clients need'),
-  instructions: z.string().min(1, 'Keep the steps clear'),
-});
-
-const EMPTY = { title: '', emoji: '🍽️', mealType: 'Breakfast', prepTime: '', tags: '', kcal: '', protein: '', ingredients: '', instructions: '' };
+const EMPTY = {
+  title: '',
+  emoji: '🍽️',
+  category: 'Breakfast',
+  customCategory: '',
+  prepTime: '',
+  tags: '',
+  kcal: '',
+  protein: '',
+  ingredients: '',
+  instructions: '',
+};
 
 function toFormValues(recipe) {
   if (!recipe) return EMPTY;
+  const isCustom = !FIXED_RECIPE_CATEGORIES.includes(recipe.mealType);
   return {
     title: recipe.title,
     emoji: recipe.emoji ?? '🍽️',
-    mealType: recipe.mealType,
+    category: isCustom ? 'Custom' : recipe.mealType,
+    customCategory: isCustom ? recipe.mealType : '',
     prepTime: recipe.prepTime,
     tags: (recipe.tags ?? []).join(', '),
     kcal: recipe.kcal ?? '',
@@ -58,6 +76,7 @@ export function RecipeFormDialog({ open, onOpenChange, recipe }) {
   const isSaving = createRecipe.isPending || updateRecipe.isPending;
 
   const form = useForm({ resolver: zodResolver(schema), defaultValues: toFormValues(recipe) });
+  const category = form.watch('category');
 
   useEffect(() => {
     if (open) {
@@ -70,7 +89,7 @@ export function RecipeFormDialog({ open, onOpenChange, recipe }) {
     const payload = {
       title: values.title,
       emoji: values.emoji || '🍽️',
-      mealType: values.mealType,
+      mealType: values.category === 'Custom' ? values.customCategory.trim() : values.category,
       prepTime: values.prepTime,
       tags: values.tags
         ? values.tags.split(',').map((t) => t.trim()).filter(Boolean)
@@ -145,10 +164,10 @@ export function RecipeFormDialog({ open, onOpenChange, recipe }) {
             <div className="grid grid-cols-2 gap-3">
               <FormField
                 control={form.control}
-                name="mealType"
+                name="category"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Meal type</FormLabel>
+                    <FormLabel>Category</FormLabel>
                     <Select value={field.value} onValueChange={field.onChange}>
                       <FormControl>
                         <SelectTrigger className="w-full">
@@ -156,7 +175,7 @@ export function RecipeFormDialog({ open, onOpenChange, recipe }) {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {MEAL_TYPES.map((type) => (
+                        {RECIPE_CATEGORIES.map((type) => (
                           <SelectItem key={type} value={type}>
                             {type}
                           </SelectItem>
@@ -181,6 +200,22 @@ export function RecipeFormDialog({ open, onOpenChange, recipe }) {
                 )}
               />
             </div>
+
+            {category === 'Custom' && (
+              <FormField
+                control={form.control}
+                name="customCategory"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Custom category</FormLabel>
+                    <FormControl>
+                      <Input placeholder="e.g. Coffee, Pre-Workout" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
 
             <FormField
               control={form.control}

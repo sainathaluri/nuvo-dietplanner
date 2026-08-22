@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/authenticate.js';
 import { authorize } from '../middleware/authorize.js';
+import { blockIfMustChangePassword } from '../middleware/blockIfMustChangePassword.js';
 import { validate } from '../middleware/validate.js';
 import {
   listPlans,
@@ -13,7 +14,7 @@ import {
 import { createPlanSchema, updatePlanSchema, updateMealStatusSchema } from '../schemas/plan.schema.js';
 
 export const planRouter = Router();
-planRouter.use(authenticate);
+planRouter.use(authenticate, blockIfMustChangePassword);
 
 planRouter.get('/', listPlans);
 planRouter.get('/:id', getPlan);

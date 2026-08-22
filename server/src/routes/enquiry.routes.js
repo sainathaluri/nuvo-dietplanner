@@ -2,6 +2,7 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { authenticate } from '../middleware/authenticate.js';
 import { authorize } from '../middleware/authorize.js';
+import { blockIfMustChangePassword } from '../middleware/blockIfMustChangePassword.js';
 import { validate } from '../middleware/validate.js';
 import {
   createEnquiry,
@@ -9,6 +10,7 @@ import {
   getEnquiry,
   updateEnquiry,
   deleteEnquiry,
+  getEnquiryHistory,
 } from '../controllers/enquiry.controller.js';
 import {
   createEnquirySchema,
@@ -27,8 +29,9 @@ const createEnquiryLimiter = rateLimit({
 });
 
 enquiryRouter.post('/', createEnquiryLimiter, validate(createEnquirySchema), createEnquiry);
-enquiryRouter.use(authenticate, authorize('admin'));
+enquiryRouter.use(authenticate, blockIfMustChangePassword, authorize('admin'));
 enquiryRouter.get('/', validate(listEnquiriesQuerySchema, 'query'), listEnquiries);
 enquiryRouter.get('/:id', getEnquiry);
+enquiryRouter.get('/:id/history', getEnquiryHistory);
 enquiryRouter.patch('/:id', validate(updateEnquirySchema), updateEnquiry);
 enquiryRouter.delete('/:id', deleteEnquiry);

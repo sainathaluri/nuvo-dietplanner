@@ -15,4 +15,10 @@ export const env = {
   jwtAccessTtl: process.env.JWT_ACCESS_TTL || '15m',
   jwtRefreshTtl: process.env.JWT_REFRESH_TTL || '30d',
   clientOrigin: process.env.CLIENT_ORIGIN || 'http://localhost:5173',
+  // Not `required(...)`: an empty key must not crash the whole server on boot (every other route
+  // still has to work without one configured) — utils/email.js throws a clear error at send time
+  // instead, which forgotPassword's controller already catches and logs.
+  resendApiKey: process.env.RESEND_API_KEY || '',
+  emailFrom: process.env.EMAIL_FROM || 'Nourishly <onboarding@resend.dev>',
+  passwordResetTokenTtlMinutes: Number(process.env.PASSWORD_RESET_TOKEN_TTL_MINUTES || 60),
 };

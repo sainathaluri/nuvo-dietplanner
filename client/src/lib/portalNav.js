@@ -1,4 +1,4 @@
-import { LayoutDashboard, Utensils, LineChart, Phone, FileText, Users, CalendarRange, BookOpen, Inbox, BarChart3, UserCog } from 'lucide-react';
+import { LayoutDashboard, Utensils, LineChart, Phone, FileText, Users, CalendarRange, BookOpen, Inbox, BarChart3, UserCog, ClipboardList, MessageCircle } from 'lucide-react';
 
 // Single source of truth for the portal shell: who sees what, matching CLAUDE.md §5 exactly.
 // Route guards in router.jsx derive their role lists from this via ROUTE_ROLES below, so the
@@ -9,6 +9,7 @@ export const NAV_BY_ROLE = {
     { to: '/app/meals', label: "This week's meals", icon: Utensils },
     { to: '/app/progress', label: 'My progress', icon: LineChart },
     { to: '/app/calls', label: 'Calls', icon: Phone },
+    { to: '/app/messages', label: 'Messages', icon: MessageCircle },
     { to: '/app/reports', label: 'Reports', icon: FileText },
   ],
   dietitian: [
@@ -17,6 +18,7 @@ export const NAV_BY_ROLE = {
     { to: '/app/plan', label: 'Weekly plan builder', icon: CalendarRange },
     { to: '/app/recipes', label: 'Recipe library', icon: BookOpen },
     { to: '/app/calls', label: 'Schedule calls', icon: Phone },
+    { to: '/app/messages', label: 'Messages', icon: MessageCircle },
     { to: '/app/reports', label: 'Report reviews', icon: FileText },
   ],
   admin: [
@@ -24,6 +26,7 @@ export const NAV_BY_ROLE = {
     { to: '/app/enquiries', label: 'Enquiry pipeline', icon: Inbox },
     { to: '/app/clients', label: 'Clients', icon: Users },
     { to: '/app/users', label: 'Manage users', icon: UserCog },
+    { to: '/app/plans', label: 'Plans', icon: ClipboardList },
     { to: '/app/plan', label: 'Weekly plan', icon: CalendarRange },
     { to: '/app/recipes', label: 'Recipe library', icon: BookOpen },
     { to: '/app/insights', label: 'Growth insights', icon: BarChart3 },

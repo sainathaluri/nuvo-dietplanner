@@ -1,9 +1,11 @@
 import { pool } from '../db/pool.js';
 import { newId } from '../db/id.js';
 
+// program_plan_name is only present when the caller asked for it via the LEFT JOIN below (mirrors
+// Call.js's dietitian_name/client_name populate pattern).
 function mapUser(row) {
   if (!row) return null;
-  return {
+  const user = {
     id: row.id,
     name: row.name,
     email: row.email,
@@ -12,10 +14,20 @@ function mapUser(row) {
     phone: row.phone,
     assignedDietitian: row.assigned_dietitian_id,
     refreshTokenVersion: row.refresh_token_version,
+    mustChangePassword: !!row.must_change_password,
+    programPlan: row.program_plan_id,
+    planDuration: row.plan_duration,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+  if (row.program_plan_name !== undefined && row.program_plan_id) {
+    user.programPlan = { _id: row.program_plan_id, name: row.program_plan_name };
+  }
+  return user;
 }
+
+const SELECT_WITH_PROGRAM_PLAN = `SELECT u.*, pp.name AS program_plan_name FROM users u
+   LEFT JOIN program_plans pp ON pp.id = u.program_plan_id`;
 
 export async function findUserByEmail(email) {
   const [rows] = await pool.query('SELECT * FROM users WHERE email = ? LIMIT 1', [email]);
@@ -23,15 +35,25 @@ export async function findUserByEmail(email) {
 }
 
 export async function findUserById(id) {
-  const [rows] = await pool.query('SELECT * FROM users WHERE id = ? LIMIT 1', [id]);
+  const [rows] = await pool.query(`${SELECT_WITH_PROGRAM_PLAN} WHERE u.id = ? LIMIT 1`, [id]);
   return mapUser(rows[0]);
 }
 
-export async function createUser({ name, email, passwordHash, role, phone = null, assignedDietitian = null }) {
+export async function createUser({
+  name,
+  email,
+  passwordHash,
+  role,
+  phone = null,
+  assignedDietitian = null,
+  mustChangePassword = false,
+  programPlan = null,
+  planDuration = null,
+}) {
   const id = newId();
   await pool.query(
-    'INSERT INTO users (id, name, email, password_hash, role, phone, assigned_dietitian_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    [id, name, email, passwordHash, role, phone, assignedDietitian]
+    'INSERT INTO users (id, name, email, password_hash, role, phone, assigned_dietitian_id, must_change_password, program_plan_id, plan_duration) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [id, name, email, passwordHash, role, phone, assignedDietitian, mustChangePassword, programPlan, planDuration]
   );
   return findUserById(id);
 }
@@ -41,21 +63,28 @@ export async function listUsers(filter = {}) {
   const where = [];
   const params = [];
   if (filter.role) {
-    where.push('role = ?');
+    where.push('u.role = ?');
     params.push(filter.role);
   }
   if (filter.assignedDietitian !== undefined) {
-    where.push('assigned_dietitian_id = ?');
+    where.push('u.assigned_dietitian_id = ?');
     params.push(filter.assignedDietitian);
   }
-  const sql = `SELECT * FROM users${where.length ? ` WHERE ${where.join(' AND ')}` : ''}`;
+  const sql = `${SELECT_WITH_PROGRAM_PLAN}${where.length ? ` WHERE ${where.join(' AND ')}` : ''}`;
   const [rows] = await pool.query(sql, params);
   return rows.map(mapUser);
 }
 
-// patch may include: name, phone, role, assignedDietitian
+// patch may include: name, phone, role, assignedDietitian, programPlan, planDuration
 export async function updateUser(id, patch) {
-  const columns = { name: 'name', phone: 'phone', role: 'role', assignedDietitian: 'assigned_dietitian_id' };
+  const columns = {
+    name: 'name',
+    phone: 'phone',
+    role: 'role',
+    assignedDietitian: 'assigned_dietitian_id',
+    programPlan: 'program_plan_id',
+    planDuration: 'plan_duration',
+  };
   const sets = [];
   const params = [];
   for (const [key, column] of Object.entries(columns)) {
@@ -69,6 +98,23 @@ export async function updateUser(id, patch) {
     await pool.query(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`, params);
   }
   return findUserById(id);
+}
+
+// Kept separate from updateUser: that function's patch is driven by a client-facing allowlist
+// (PATCH /users/:id, PATCH /users/me) that must never accept a raw password hash.
+export async function setPassword(id, { passwordHash, mustChangePassword }) {
+  await pool.query('UPDATE users SET password_hash = ?, must_change_password = ? WHERE id = ?', [
+    passwordHash,
+    mustChangePassword,
+    id,
+  ]);
+  return findUserById(id);
+}
+
+// Invalidates every refresh token issued before the call (see utils/jwt.js#verifyRefreshToken /
+// auth.controller.js#refresh, which reject a token whose tokenVersion doesn't match this column).
+export async function bumpRefreshTokenVersion(id) {
+  await pool.query('UPDATE users SET refresh_token_version = refresh_token_version + 1 WHERE id = ?', [id]);
 }
 
 export async function countUsers(filter = {}) {

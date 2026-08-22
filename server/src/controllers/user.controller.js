@@ -47,19 +47,28 @@ export const updateMe = asyncHandler(async (req, res) => {
 });
 
 export const updateUser = asyncHandler(async (req, res) => {
-  const { assignedDietitian } = req.body;
+  const { assignedDietitian, role } = req.body;
   if (assignedDietitian) {
     const dietitian = await findUserById(assignedDietitian);
     if (!dietitian || dietitian.role !== 'dietitian') throw ApiError.badRequest('Invalid dietitian');
   }
 
-  const user = await updateUserRecord(req.params.id, req.body);
+  // programPlan/planDuration only ever apply to a client — same conditional-apply convention as
+  // assignedDietitian above. Only cleared when this patch explicitly changes the role away from
+  // client; otherwise passed through as given (or omitted, leaving them untouched).
+  const patch = { ...req.body };
+  if (role !== undefined && role !== 'client') {
+    patch.programPlan = null;
+    patch.planDuration = null;
+  }
+
+  const user = await updateUserRecord(req.params.id, patch);
   if (!user) throw ApiError.notFound('User not found');
   res.json(toClientShape(user, ['passwordHash']));
 });
 
 export const createUser = asyncHandler(async (req, res) => {
-  const { name, email, password, role, assignedDietitian = null } = req.body;
+  const { name, email, password, role, assignedDietitian = null, programPlan = null, planDuration = null } = req.body;
   if (await findUserByEmail(email)) throw ApiError.conflict('Email already registered');
 
   if (assignedDietitian) {
@@ -73,6 +82,11 @@ export const createUser = asyncHandler(async (req, res) => {
     passwordHash: await hashPassword(password),
     role,
     assignedDietitian: role === 'client' ? assignedDietitian : null,
+    programPlan: role === 'client' ? programPlan : null,
+    planDuration: role === 'client' ? planDuration : null,
+    // Every account is admin-created now (self-registration is gone) — the person who set this
+    // password is never the one who'll use it, so force a change on first login.
+    mustChangePassword: true,
   });
   res.status(201).json(toClientShape(user, ['passwordHash']));
 });

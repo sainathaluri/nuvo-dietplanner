@@ -1,8 +1,149 @@
 # Progress
 
-Last updated: 2026-08-19 (production deploy verification + a real login-breaking CORS bug fixed).
+Last updated: 2026-08-22 (client ↔ dietitian messaging).
 For the detailed day-by-day build journal, see `docs/worklog/` — this file is the current-state
 summary; the worklog is the history.
+
+**Update, 2026-08-22 (session 7): client and their assigned dietitian can now message each other,
+with persistent history, a dietitian conversation list, and an unread indicator — polling only, no
+websocket infrastructure.** New `messages` table (conversation identity is the `(client,
+dietitian)` pair itself, no separate conversations resource); every route requires role `client`
+or `dietitian` — admin is excluded entirely, not given oversight access. Server-side scoping lives
+in one function (`message.controller.js#resolveConversation`): a client always means "me and my
+current assigned dietitian" (never client-supplied), a dietitian must name a client and can only
+ever address one they're currently assigned to (`403` otherwise) — if a client is later
+reassigned, the old thread becomes inaccessible to both the old dietitian and the client's own
+lookup. New shared `MessageThread.jsx` (chat bubbles, auto-scroll, composer) powers both the
+client's standalone Messages screen and the dietitian's list+thread split view
+(`DietitianMessagesScreen.jsx` + `ConversationListItem.jsx`), the latter answering the spec's
+explicit "dietitians have multiple clients" ask. Wired a real unread-count badge into the Sidebar
+nav item and fixed a long-standing placeholder — the Sidebar's "Message us" footer button had
+shown `toast('Messaging is coming soon.')` since early in the project; it now actually navigates.
+Not yet run against a live database this session — same environment constraint as Sessions 5–6, no
+local MySQL reachable — verification is DB-free only (server files `node --check`d, unit suite
+unaffected, client build + lint clean). Full account in `docs/worklog/2026-08-22.md`'s Session 7.
+
+**Update, 2026-08-22 (session 6): admin/dietitian now get one tabbed client-profile page —
+info/plan, full progress history, last-15-days meal plans, call history with per-call notes, and
+general notes — replacing the old quick-view drawer.** New route `/app/clients/:id`
+(`ClientProfileScreen.jsx`), reached by clicking a client in the existing Clients list; five tabs
+(Overview, Progress, Meal plans, Calls, Notes), each its own lazily-loaded chunk whose data query
+doesn't fire until opened (Radix `Tabs` don't mount inactive content by default). Two real gaps had
+to be closed in the data model before the page could show anything meaningful: meals had no
+`notes` field at all (now `plan_meals.notes`, captured in the plan builder), and rescheduling a
+call has always silently overwritten its time with no trace (`calls.original_scheduled_at`/
+`rescheduled_at`, stamped server-side on a genuine reschedule, surfaced as a "Rescheduled" badge).
+New `client_notes` table for free-standing notes not tied to any call/report, author-or-admin
+editable. Per-call notes needed no new API — `PATCH /calls/:id` already allowed editing them any
+time; the gap was purely a missing UI, now an inline always-editable field in the call history
+card. Not yet run against a live database this session — same as Session 5, no local MySQL was
+reachable — verification is DB-free only (server files `node --check`d, unit suite unaffected,
+client build + lint clean, confirmed each tab really is a separate JS chunk in the build output).
+Full account in `docs/worklog/2026-08-22.md`'s Session 6.
+
+**Update, 2026-08-22 (session 5): Progress now tracks four body measurements alongside weight, with
+current-vs-previous deltas, a full append-only history table, and a dashboard summary.** `progress`
+gained nullable `waist`/`hip`/`thigh`/`upper_arm` columns (weight stays the only required field).
+The entry form (`ProgressEntryDialog.jsx`) gained the four new optional inputs; My Progress
+(`ProgressScreen.jsx`) now shows a 5-field measurements grid with change-since-last-entry hints
+(distinguishing "no previous record at all" from "this field wasn't recorded last time" — the
+spec's empty and single-record states) and a new `ProgressHistoryTable.jsx` listing every entry;
+the Client Dashboard's `ProgressSnapshotCard.jsx` gained a compact latest-value/delta chip row for
+whichever measurements have been recorded. Not yet run against a live database this session — no
+local MySQL was reachable — so verification is DB-free only (schema/model/schema.js checked, client
+build clean, existing unit tests unaffected); real end-to-end browser verification is carried over.
+Full account in `docs/worklog/2026-08-22.md`'s Session 5.
+
+**Update, 2026-08-22 (session 4): the weekly diet now captures an explicit date range, a real
+autosave bug in the plan builder is fixed, and Report reviews never shows every client's reports
+mixed together.** Three independent pieces:
+1. **Week Start/End Date** — `plans` gained an additive `week_end` column (the existing `week`
+   keeps its exact meaning as "start," so every existing lookup/index is untouched). Week End Date
+   is auto-computed as start + 6 days and shown read-only in the assignment UI, not independently
+   pickable — `DayTabs.jsx`'s fixed 7-tab week rendering has no concept of a variable-length week,
+   so an independent end date would have silently broken it. Both dates are immutable after
+   creation, matching the existing `week` field's behavior. Existing plans were backfilled.
+2. **Meal-time autosave bug, diagnosed before being fixed** (per explicit request): unsequenced
+   fire-and-forget autosave PATCHes (full-array replace) could race out of order at the DB, and a
+   hydrate effect unconditionally re-seeded local state from any background refetch with no
+   dirty/in-flight guard — together, a stale server response could silently overwrite a newer edit
+   mid-session. Fixed entirely client-side: saves are now serialized (`mutateAsync` + an in-flight
+   guard, queuing a follow-up save with the latest state rather than firing an overlapping request),
+   with a proper rollback-with-toast on failure and a hydrate guard that only re-seeds while the
+   client/week selection is unchanged and nothing is dirty/in-flight.
+3. **Reports client filter** — `DietitianReportsScreen.jsx` was calling its `useReports` hook with
+   no argument, defaulting to every one of the dietitian's clients' reports mixed together (the
+   backend already fully supported single-client scoping). Added a client `Select` that
+   auto-selects the first client on load and a persistent "Showing reports for {name}" header, so
+   exactly one client's reports show at a time, never all at once.
+
+All three verified end-to-end: curl against the live server (valid/mismatched/missing `weekEnd`
+validation), a direct DB check proving a rapid-fire sequence of meal-time edits persists only the
+final value (not an older one) and survives a refresh, and a real browser session switching between
+clients on the Reports page. Full account in `docs/worklog/2026-08-22.md`'s Session 4.
+
+**Update, 2026-08-22 (session 3): admin can now define Plans clients enroll in, the enquiry
+pipeline keeps real history and can turn a lead into a real client account (with a real scheduled
+call for Follow-up), and recipes can carry a custom category.** Four independent pieces:
+1. **Program Plans** — a new admin-managed "Plan" (name/description/active), assigned to a client
+   at creation/edit alongside a fixed Plan Duration list (1/3/6/12 months). New `/app/plans` admin
+   screen; automatically visible to every dietitian (`GET /program-plans`, no per-dietitian
+   ownership); shown read-only in `ClientDetailDrawer`'s new "Program" section (kept deliberately
+   separate from the existing "Current plan" section, which is the unrelated weekly meal plan).
+2. **Enquiry history** — every status change now appends an immutable `enquiry_history` row
+   instead of overwriting a single note column; a new detail drawer shows the full timeline.
+   "Contacted" requires conversation notes, "Unsuccessful" (the existing `closed` status,
+   relabeled) requires a reason — both block the transition until provided.
+3. **Enquiry Follow-up / Converted** — "Follow-up" now books a real call through the Phase-3
+   availability service (reusing `SlotPicker`) and, the first time either "Follow-up" or
+   "Converted" is reached, creates the lead's real client account (temp password, Plan/Duration).
+   A real bug was caught and fixed here: if the call-booking step failed after the account was
+   already created, the account was orphaned (enquiry never learned its id, permanently blocking
+   retries since the email was taken) — fixed by persisting the new account's id immediately,
+   before attempting the call.
+4. **Recipe custom categories** — `recipes.meal_type` relaxed from a fixed 4-value ENUM to free
+   text (confirmed safe: the weekly plan builder never compares a recipe's category to a slot's
+   own type). The Create/Edit Recipe form's "Category" select gained a "Custom" option revealing a
+   free-text input; the Recipe Library's filter tabs now include whatever custom categories exist,
+   alongside the 4 fixed ones.
+
+All four verified end-to-end in a real browser and via curl against a live server (not just
+build/lint) — including the orphaned-account bug, reproduced and confirmed fixed via a real
+double-request sequence. Full account in `docs/worklog/2026-08-22.md`'s Session 3.
+
+**Update, 2026-08-22 (session 2): the "Repeat Call" recurring-auto-scheduling feature is gone
+completely, and booking/rescheduling now show only real available slots.** Removed
+`server/src/jobs/callScheduler.js`, the `frequency`/`recurrence_parent_id` columns (dropped from
+the DB, not just unused — `server/src/db/migrate.js` gained matching `DROP` statements), and all
+UI for it — every call is one-off now. `GET /calls/available-slots` is new: it reuses the same
+`checkAvailability` core the booking check already runs, enumerating every open 30-minute slot for
+a day so "shown as available" can never drift from "actually bookable." Both the client's and
+dietitian's booking dialogs now show a date input + a slot-button grid (in book **and** reschedule
+mode) instead of a free-form datetime field, backed by a new shared `SlotPicker.jsx`. Reschedule
+itself was already correct (same row updates in place, already re-validated since the availability
+work) — the one real gap was cross-session freshness, closed by polling `useCalls()` every 20s
+(matching the existing reminder-poll cadence) so a change by one party shows up for the other
+without a manual reload. Verified end-to-end in a real browser: booked a slot as the client,
+confirmed it disappeared from the grid, rescheduled it, confirmed the old slot reappeared and the
+new one was taken, and confirmed the change was visible from the dietitian's own session. Full
+account in `docs/worklog/2026-08-22.md`'s Session 2.
+
+**Update, 2026-08-22 (session 1): dietitian calls can no longer be double-booked, and a dietitian can now
+define when they're actually available.** `POST /calls`/`PATCH /calls/:id` (previously
+unrestricted — any client/dietitian/admin could book any overlapping time) now validate every
+booking or reschedule against a recurring weekly-hours template and a generalized
+`closed`/`open` exception table (covers a blocked date, a blocked time within a day, a multi-day
+holiday/personal period, and extra hours on a normally-closed date, all as the same shape).
+Fixed 30-minute call slots; a dietitian/admin can pass `force: true` to bypass the rules for a
+genuine exception, a client never can. The concurrent-booking race is closed with a real
+`SELECT ... FOR UPDATE` transaction lock, not just an application-level check — this surfaced and
+fixed two real bugs along the way (a missing composite index causing over-broad InnoDB locking,
+and a genuine deadlock needing a transaction-retry). New self-service screen: the dietitian's
+existing "Schedule calls" page gained an "Availability" tab. Also fixed a real, previously-latent
+bug in the shared `Tabs` UI primitive (installed early on but never actually used until this
+screen) that made it render invisibly. New: `server/tests/` (Node's built-in `node:test`, zero
+new dependencies) — unit tests for the conflict logic plus an integration test proving the race
+is actually closed. Full account in `docs/worklog/2026-08-22.md`.
 
 **Update, 2026-08-19 (session 3): the production deploy was actually broken — every login on the
 live site has failed since the Netlify domain got renamed, and nobody had caught it.** Render's
@@ -131,23 +272,41 @@ profile dropdown, 404 and Unauthorized pages.
 
 **Client portal** (role: client) — Overview (today's meals, next call, progress snapshot),
 This week's meals (day tabs, mark-eaten, request-swap), My progress (recharts weight trend,
-milestones, log-a-new-entry), Calls (book/reschedule/cancel, optional recurrence + in-app
-reminders — testing-stage, added 2026-08-19), Reports (upload + read the dietitian's feedback
-thread).
+milestones, log-a-new-entry), Calls (book/reschedule via a real available-slots picker, cancel,
+in-app reminders — reminders are testing-stage, added 2026-08-19; slot picker and same-session
+cross-visibility added 2026-08-22, replacing the removed recurring-call feature), Messages (direct
+chat with the assigned dietitian, 15s polling, unread nav badge — added 2026-08-22), Reports
+(upload + read the dietitian's feedback thread).
 
 **Dietitian portal** — Dashboard (today's calls, client count, recently-logged-progress count,
 today's calls list, clients list — replaced the placeholder 2026-08-17), Recipe library
-(search/filter/CRUD), Weekly plan builder (`@dnd-kit` drag-and-drop from a recipe rail onto meal
-slots, autosave, publish — every dropzone is *also* an independent accessible `Select`, not
-drag-only; admin sees an additional required Dietitian picker, a dietitian caller doesn't),
-Clients list with a lazy-loaded detail drawer, Schedule calls, Report reviews (reply to a client's
+(search/filter/CRUD, category filter tabs now include any custom categories in use alongside the
+4 fixed ones — added 2026-08-22), Weekly plan builder (`@dnd-kit` drag-and-drop from a recipe rail onto meal
+slots, autosave — now serialized/guarded against the race that could clobber a fast edit,
+see Known bugs fixed below — publish, an explicit Week Start/End Date with the end date
+auto-computed and locked at start+6 days — added 2026-08-22; every dropzone is *also* an
+independent accessible `Select`, not drag-only; admin sees an additional required Dietitian
+picker, a dietitian caller doesn't),
+Clients list opening a full tabbed client profile page (`/app/clients/:id` — info/plan, full
+progress history + chart, last-15-days meal plans, call history with editable per-call notes,
+general notes; each tab lazily loaded — replaced the old quick-view drawer 2026-08-22), Schedule
+calls (now with an Availability tab —
+weekly hours, blocked dates/times/holidays, extra hours on a specific date — added 2026-08-22),
+Messages (a conversation list — one row per client, unread badges, most-recently-active first —
+next to a thread panel; added 2026-08-22), Report reviews (a client `Select` narrows to exactly
+one client's reports at a time, never all mixed together — added 2026-08-22; reply to a client's
 feedback thread).
 
 **Admin portal** — Business overview KPIs, Enquiry pipeline as a kanban with real drag-and-drop
 *and* per-card dropdown status transitions (same accessible dual-path pattern as the plan
-builder), Growth insights (real 8-week enquiry volume, pipeline-stage breakdown, and dietitian
-workload charts — no more empty placeholders), **Manage users** (create client/dietitian/admin
-accounts, edit an existing user's role and dietitian assignment — added 2026-08-17).
+builder) — plus a detail drawer showing each enquiry's full append-only history, required notes on
+Contacted/Unsuccessful, and Follow-up/Converted creating a real client account (and, for
+Follow-up, a real scheduled call — added 2026-08-22), Growth insights (real 8-week enquiry volume,
+pipeline-stage breakdown, and dietitian workload charts — no more empty placeholders), **Manage
+users** (create client/dietitian/admin accounts, edit an existing user's role, dietitian
+assignment, and Program Plan/duration — added 2026-08-17, plan fields added 2026-08-22), **Plans**
+(create/edit/activate-deactivate the named service plans clients can be enrolled in, automatically
+visible to every dietitian — added 2026-08-22).
 
 **Client ↔ dietitian assignment** — a client can browse the dietitian directory and pick (or
 change) who they work with from their Overview screen; admin can also assign/reassign a client to
@@ -163,6 +322,11 @@ for background query failures that would otherwise fail silently.
 
 **Real bugs found and fixed along the way** (not asked for, found while building — see the
 worklog for each day's full reasoning):
+- **2026-08-22 (session 4)**: the weekly plan builder's meal-time autosave could silently overwrite
+  a user's newer edit with a stale one — unsequenced fire-and-forget PATCHes could race out of
+  order at the DB, and a hydrate effect unconditionally re-seeded local state from any background
+  refetch with no dirty/in-flight guard. Diagnosed before fixing (per explicit request), fixed by
+  serializing saves client-side and gating the hydrate effect.
 - A refresh-interceptor deadlock that would have hung `isLoading` forever for any anonymous
   visitor (Session 4).
 - Multiple dietitian-authorization gaps: cross-client data leaks on `Progress`/`Report` listing,
@@ -209,7 +373,8 @@ worklog for each day's full reasoning):
   re-confirmed for these three. See `docs/worklog/2026-08-17.md` session 2.
 - Report file storage is local disk (`server/uploads/`), which is ephemeral on most PaaS hosts —
   fine for a demo, needs S3/R2 (or a persistent disk) for real use.
-- No automated test suite.
+- No repo-wide automated test suite — as of 2026-08-22, `server/tests/` (`node:test`) exists but
+  covers only the availability service, not the rest of the app.
 - Two more Lighthouse color-contrast findings remain, deliberately not fixed: white text on the
   `coral` primary button (2.82:1) and `sage-deep` eyebrow labels (3.13:1) both fall under WCAG
   AA's 4.5:1 threshold — but both are CLAUDE.md §4's *exact specified brand colors* against the
@@ -232,17 +397,52 @@ worklog for each day's full reasoning):
 
 ## Known gaps (flagged, not silently decided)
 
-- Call auto-scheduling/reminders (2026-08-19) is testing-stage: the scheduler is a single-process
-  `setInterval` (no queue/lock — fine for the one server instance this app runs), and reminders are
-  client-side polling + an in-app toast only, not a push notification or real phone call. Now
-  verified in a real browser (client-side booking flow); the dietitian-side booking dialog and a
-  second (poll-driven, not invalidation-driven) reminder toast are the two pieces not yet
-  independently confirmed on screen — see `docs/worklog/2026-08-19.md` Session 2.
+- Call reminders (2026-08-19) are still testing-stage: client-side polling + an in-app toast only,
+  not a push notification or real phone call. (The recurring "Repeat call" auto-scheduling half of
+  that work — the `setInterval` scheduler — was removed completely on 2026-08-22, both booking
+  dialogs' reminder pickers verified in a real browser that same session.)
 
 ## Session index
 
 One line per work session, newest first. Links to `docs/worklog/YYYY-MM-DD.md`.
 
+- [2026-08-22](worklog/2026-08-22.md) — **Session 7**: built client ↔ assigned dietitian messaging
+  — persistent history, server-side conversation scoping enforced in one place, a dietitian
+  conversation list with unread badges, sensible ordering, 15s polling (no websocket
+  infrastructure). Admin excluded entirely. Not verified against a live database/browser this
+  session (no local MySQL reachable) — carried over. **Session 6**: built the client profile "centrepiece" page
+  (`/app/clients/:id`) for admin/dietitian — tabbed Overview/Progress/Meal plans/Calls/Notes, each
+  lazily loaded. Added meal notes and call reschedule-tracking to the data model (both were real
+  gaps), a new general `client_notes` table, and wired existing per-call notes editing into the new
+  Calls tab. Replaced and deleted the old `ClientDetailDrawer.jsx`. Not verified against a live
+  database/browser this session (no local MySQL reachable) — carried over. **Session 5**: added
+  body-measurement Progress fields
+  (waist/hip/thigh/upper arm alongside weight) — entry form, a current-vs-previous measurements
+  grid with empty/single-record-aware hints, a full append-only history table, and a Client
+  Dashboard summary chip row. Not verified against a live database/browser this session (no local
+  MySQL reachable) — carried over. **Session 4**: added an explicit Week Start/End Date to the
+  weekly diet assignment flow (end date auto-computed and locked at start+6 days), diagnosed and
+  fixed a real meal-time autosave race/clobber bug in the plan builder (serialized saves, a
+  dirty/in-flight-guarded hydrate effect, rollback-with-toast on failure), and added a client filter
+  to the dietitian Reports page so exactly one client's reports show at a time. **Session 3**: added admin-managed Program Plans (new
+  entity, kept distinct from the existing weekly meal Plan), enquiry pipeline history (append-only,
+  nothing overwritten) with required notes on Contacted/Unsuccessful, Follow-up/Converted creating
+  a real client account and (for Follow-up) a real scheduled call via the Phase-3 availability
+  service, and recipe custom categories (relaxed `meal_type` to free text, confirmed the plan
+  builder never depended on its fixed values). Caught and fixed a real orphaned-account bug where a
+  failed call-booking could leave a created account permanently unreachable. **Session 2**: removed
+  the "Repeat Call" recurring feature completely (job, schema columns dropped via new `migrate.js`
+  `DROP` statements, all UI), added a
+  `GET /calls/available-slots` endpoint reusing the availability service's conflict logic, and
+  replaced both booking dialogs' free-form date/time input with a real slot-picker grid (book
+  **and** reschedule mode). Closed a cross-session freshness gap by polling the main calls list
+  every 20s. Verified end-to-end in a real browser: book → slot disappears → reschedule → old slot
+  frees, new slot blocks → visible from the dietitian's own session. **Session 1**: built a
+  dietitian availability service (weekly hours, date/time/holiday blocks, double-booking prevention
+  with a real concurrency-safe lock) and wired it into call booking/rescheduling; added a
+  self-service Availability tab and the repo's first automated test suite (`server/tests/`,
+  `node:test`). Found and fixed two real MySQL locking bugs (missing composite index, a genuine
+  deadlock needing a retry) and a latent Tabs-primitive rendering bug, verified in a real browser.
 - [2026-08-19](worklog/2026-08-19.md) — **Session 3**: found and fixed a real production bug
   (Render's `CLIENT_ORIGIN` pointed at a 404'd domain, silently breaking every live-site login via
   CORS since the Netlify rename), ran the pending `calls` migration against production Railway

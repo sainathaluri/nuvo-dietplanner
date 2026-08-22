@@ -14,9 +14,13 @@ import { authRouter } from './routes/auth.routes.js';
 import { userRouter } from './routes/user.routes.js';
 import { enquiryRouter } from './routes/enquiry.routes.js';
 import { planRouter } from './routes/plan.routes.js';
+import { programPlanRouter } from './routes/programPlan.routes.js';
 import { recipeRouter } from './routes/recipe.routes.js';
 import { callRouter } from './routes/call.routes.js';
+import { availabilityRouter } from './routes/availability.routes.js';
 import { progressRouter } from './routes/progress.routes.js';
+import { clientNoteRouter } from './routes/clientNote.routes.js';
+import { messageRouter } from './routes/message.routes.js';
 import { reportRouter } from './routes/report.routes.js';
 import { insightsRouter } from './routes/insights.routes.js';
 
@@ -38,9 +42,13 @@ app.use('/api/auth', authRouter);
 app.use('/api/users', userRouter);
 app.use('/api/enquiries', enquiryRouter);
 app.use('/api/plans', planRouter);
+app.use('/api/program-plans', programPlanRouter);
 app.use('/api/recipes', recipeRouter);
 app.use('/api/calls', callRouter);
+app.use('/api/availability', availabilityRouter);
 app.use('/api/progress', progressRouter);
+app.use('/api/client-notes', clientNoteRouter);
+app.use('/api/messages', messageRouter);
 app.use('/api/reports', reportRouter);
 app.use('/api/insights', insightsRouter);
 

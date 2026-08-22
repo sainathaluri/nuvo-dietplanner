@@ -5,9 +5,10 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { StatCard } from '@/components/portal/shared/StatCard';
 import { EmptyState } from '@/components/portal/shared/EmptyState';
 import { useProgress } from '@/hooks/useProgress';
-import { computeProgressStats } from '@/lib/clientPortal';
+import { computeProgressStats, formatMeasurementHint } from '@/lib/clientPortal';
 import { WeightTrendChart } from './WeightTrendChart';
 import { ProgressEntryDialog } from './ProgressEntryDialog';
+import { ProgressHistoryTable } from './ProgressHistoryTable';
 
 export function ProgressScreen() {
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -112,11 +113,34 @@ export function ProgressScreen() {
           </aside>
 
           <section className="rounded-card bg-white p-6 shadow-soft min-[900px]:col-span-2">
-            <h2 className="text-xl">Measurements</h2>
-            <div className="mt-4 grid grid-cols-2 gap-3 min-[600px]:grid-cols-3">
-              <StatCard label="Latest weight" value={`${stats.latest.weight} kg`} tone="sage" />
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl">Measurements</h2>
+              {!stats.previous && (
+                <span className="text-xs text-muted-foreground">Log a second entry to start seeing change over time</span>
+              )}
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-3 min-[600px]:grid-cols-3 min-[900px]:grid-cols-5">
+              {stats.measurements.map((m) => (
+                <StatCard
+                  key={m.key}
+                  label={m.label}
+                  tone={m.key === 'weight' ? 'sage' : 'default'}
+                  value={m.latestValue != null ? `${m.latestValue} ${m.unit}` : '—'}
+                  hint={formatMeasurementHint(m)}
+                />
+              ))}
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-3 min-[600px]:grid-cols-3">
               <StatCard label="Energy score" value={stats.latest.energy != null ? `${stats.latest.energy} / 10` : '—'} />
               <StatCard label="Adherence" value={stats.latest.adherence != null ? `${stats.latest.adherence}%` : '—'} tone="sage" />
+            </div>
+          </section>
+
+          <section className="rounded-card bg-white p-6 shadow-soft min-[900px]:col-span-2">
+            <h2 className="text-xl">Full history</h2>
+            <span className="text-xs text-muted-foreground">Every check-in you've logged, most recent first</span>
+            <div className="mt-4">
+              <ProgressHistoryTable entries={stats.sorted} />
             </div>
           </section>
         </div>

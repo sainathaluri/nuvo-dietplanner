@@ -8,25 +8,32 @@ import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from '
 import { Input } from '@/components/ui/input';
 import { useCreateProgress } from '@/hooks/useProgress';
 
+const measurementField = z.union([z.coerce.number().positive('Enter a valid measurement'), z.literal('')]).optional();
+
 const schema = z.object({
   date: z.string().min(1),
   weight: z.coerce.number().positive('Enter a valid weight'),
+  waist: measurementField,
+  hip: measurementField,
+  thigh: measurementField,
+  upperArm: measurementField,
   energy: z.union([z.coerce.number().min(0).max(10), z.literal('')]).optional(),
   adherence: z.union([z.coerce.number().min(0).max(100), z.literal('')]).optional(),
 });
 
 const today = () => new Date().toISOString().slice(0, 10);
+const emptyValues = { date: today(), weight: '', waist: '', hip: '', thigh: '', upperArm: '', energy: '', adherence: '' };
 
 export function ProgressEntryDialog({ open, onOpenChange }) {
   const createProgress = useCreateProgress();
   const form = useForm({
     resolver: zodResolver(schema),
-    defaultValues: { date: today(), weight: '', energy: '', adherence: '' },
+    defaultValues: emptyValues,
   });
 
   function handleOpenChange(next) {
     onOpenChange(next);
-    if (!next) form.reset({ date: today(), weight: '', energy: '', adherence: '' });
+    if (!next) form.reset(emptyValues);
   }
 
   function onSubmit(values) {
@@ -34,6 +41,10 @@ export function ProgressEntryDialog({ open, onOpenChange }) {
       {
         date: values.date,
         weight: values.weight,
+        waist: values.waist === '' ? undefined : values.waist,
+        hip: values.hip === '' ? undefined : values.hip,
+        thigh: values.thigh === '' ? undefined : values.thigh,
+        upperArm: values.upperArm === '' ? undefined : values.upperArm,
         energy: values.energy === '' ? undefined : values.energy,
         adherence: values.adherence === '' ? undefined : values.adherence,
       },
@@ -49,7 +60,7 @@ export function ProgressEntryDialog({ open, onOpenChange }) {
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-sm">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Update today's progress</DialogTitle>
           <DialogDescription>Every update tells a story of care and consistency.</DialogDescription>
@@ -83,6 +94,60 @@ export function ProgressEntryDialog({ open, onOpenChange }) {
                 </FormItem>
               )}
             />
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="waist"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Waist (cm, optional)</FormLabel>
+                    <FormControl>
+                      <Input type="number" step="0.1" placeholder="e.g. 80" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="hip"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Hip (cm, optional)</FormLabel>
+                    <FormControl>
+                      <Input type="number" step="0.1" placeholder="e.g. 98" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="thigh"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Thigh (cm, optional)</FormLabel>
+                    <FormControl>
+                      <Input type="number" step="0.1" placeholder="e.g. 56" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="upperArm"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Upper arm (cm, optional)</FormLabel>
+                    <FormControl>
+                      <Input type="number" step="0.1" placeholder="e.g. 30" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
             <FormField
               control={form.control}
               name="energy"

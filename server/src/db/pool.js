@@ -10,17 +10,29 @@ export const pool = mysql.createPool({ uri: env.mysqlUrl, timezone: 'Z' });
 
 // Wraps a set of writes that touch more than one table (e.g. a plan and its meals) in a single
 // transaction — mysql2 has no ORM-level unit-of-work, so callers get a connection explicitly.
-export async function withTransaction(fn) {
-  const conn = await pool.getConnection();
-  try {
-    await conn.beginTransaction();
-    const result = await fn(conn);
-    await conn.commit();
-    return result;
-  } catch (err) {
-    await conn.rollback();
-    throw err;
-  } finally {
-    conn.release();
+//
+// Retries on a genuine InnoDB deadlock/lock-wait-timeout: the availability guard's row-locking
+// (server/src/models/Call.js#lockOverlappingCalls, used from a transaction here) makes two
+// concurrent bookings for the same dietitian each take a gap lock and then insert — under load
+// this can form a real lock cycle that InnoDB detects and kills one side of (ER_LOCK_DEADLOCK),
+// reproduced empirically while testing the concurrent-booking race. Retrying the whole `fn` is the
+// standard mitigation; it's a transient condition, not a real conflict (unlike ApiError.conflict,
+// which is a deliberate rejection and is never retried).
+const RETRYABLE_ERROR_CODES = new Set(['ER_LOCK_DEADLOCK', 'ER_LOCK_WAIT_TIMEOUT']);
+
+export async function withTransaction(fn, { retries = 2 } = {}) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      const result = await fn(conn);
+      await conn.commit();
+      return result;
+    } catch (err) {
+      await conn.rollback();
+      if (!RETRYABLE_ERROR_CODES.has(err.code) || attempt === retries) throw err;
+    } finally {
+      conn.release();
+    }
   }
 }

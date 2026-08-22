@@ -1,24 +1,5 @@
-// Shared by the booking dialogs (client + dietitian) and useCallReminders — options for the
-// testing-stage auto-scheduling/reminder feature (see server/src/jobs/callScheduler.js).
-
-export const CALL_FREQUENCIES = [
-  { value: 'once', label: "Doesn't repeat" },
-  { value: 'daily', label: 'Daily' },
-  { value: 'weekly', label: 'Weekly' },
-  { value: 'biweekly', label: 'Every 2 weeks' },
-  { value: 'monthly', label: 'Monthly' },
-];
-
-const FREQUENCY_DESCRIPTIONS = {
-  daily: 'every day',
-  weekly: 'every week',
-  biweekly: 'every 2 weeks',
-  monthly: 'every month',
-};
-
-export function describeFrequency(value) {
-  return FREQUENCY_DESCRIPTIONS[value] ?? '';
-}
+// Shared by the booking dialogs (client + dietitian) and useCallReminders — reminder options for
+// the in-app pop-up reminder feature.
 
 export const CALL_REMINDER_OPTIONS = [
   { value: 'none', label: 'No reminder' },

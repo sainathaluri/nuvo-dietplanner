@@ -2,7 +2,20 @@ import { pool } from '../db/pool.js';
 import { newId } from '../db/id.js';
 import { buildSetClause } from '../db/helpers.js';
 
-const PROGRESS_COLUMNS = { date: 'date', weight: 'weight', energy: 'energy', adherence: 'adherence' };
+const PROGRESS_COLUMNS = {
+  date: 'date',
+  weight: 'weight',
+  waist: 'waist',
+  hip: 'hip',
+  thigh: 'thigh',
+  upperArm: 'upper_arm',
+  energy: 'energy',
+  adherence: 'adherence',
+};
+
+function toNumberOrNull(value) {
+  return value === null ? null : Number(value);
+}
 
 function mapProgress(row) {
   if (!row) return null;
@@ -10,7 +23,11 @@ function mapProgress(row) {
     id: row.id,
     client: row.client_id,
     date: row.date,
-    weight: row.weight === null ? null : Number(row.weight),
+    weight: toNumberOrNull(row.weight),
+    waist: toNumberOrNull(row.waist),
+    hip: toNumberOrNull(row.hip),
+    thigh: toNumberOrNull(row.thigh),
+    upperArm: toNumberOrNull(row.upper_arm),
     energy: row.energy,
     adherence: row.adherence,
     createdAt: row.created_at,
@@ -35,11 +52,21 @@ export async function findProgressById(id) {
   return mapProgress(rows[0]);
 }
 
-export async function createProgress({ client, date, weight, energy = null, adherence = null }) {
+export async function createProgress({
+  client,
+  date,
+  weight,
+  waist = null,
+  hip = null,
+  thigh = null,
+  upperArm = null,
+  energy = null,
+  adherence = null,
+}) {
   const id = newId();
   await pool.query(
-    'INSERT INTO progress (id, client_id, date, weight, energy, adherence) VALUES (?, ?, ?, ?, ?, ?)',
-    [id, client, date, weight, energy, adherence]
+    'INSERT INTO progress (id, client_id, date, weight, waist, hip, thigh, upper_arm, energy, adherence) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [id, client, date, weight, waist, hip, thigh, upperArm, energy, adherence]
   );
   return findProgressById(id);
 }

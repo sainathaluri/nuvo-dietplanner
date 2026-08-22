@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/authenticate.js';
 import { authorize } from '../middleware/authorize.js';
+import { blockIfMustChangePassword } from '../middleware/blockIfMustChangePassword.js';
 import { validate } from '../middleware/validate.js';
 import {
   listProgress,
@@ -11,7 +12,7 @@ import {
 import { createProgressSchema, updateProgressSchema } from '../schemas/progress.schema.js';
 
 export const progressRouter = Router();
-progressRouter.use(authenticate);
+progressRouter.use(authenticate, blockIfMustChangePassword);
 
 progressRouter.get('/', listProgress);
 progressRouter.post('/', authorize('client'), validate(createProgressSchema), createProgress);
