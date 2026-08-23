@@ -1,4 +1,4 @@
-import { LayoutDashboard, Utensils, LineChart, Phone, FileText, Users, CalendarRange, BookOpen, Inbox, BarChart3, UserCog, ClipboardList, MessageCircle } from 'lucide-react';
+import { LayoutDashboard, Utensils, LineChart, Phone, FileText, Users, CalendarRange, BookOpen, Inbox, BarChart3, UserCog, ClipboardList, MessageCircle, Mail } from 'lucide-react';
 
 // Single source of truth for the portal shell: who sees what, matching CLAUDE.md §5 exactly.
 // Route guards in router.jsx derive their role lists from this via ROUTE_ROLES below, so the
@@ -30,6 +30,9 @@ export const NAV_BY_ROLE = {
     { to: '/app/plan', label: 'Weekly plan', icon: CalendarRange },
     { to: '/app/recipes', label: 'Recipe library', icon: BookOpen },
     { to: '/app/insights', label: 'Growth insights', icon: BarChart3 },
+    // Not in CLAUDE.md §5's fixed admin screen list — added because the notification-engine work
+    // (docs/worklog/2026-08-23.md) explicitly asked for an admin view of the email log.
+    { to: '/app/email-log', label: 'Email log', icon: Mail },
   ],
 };
 

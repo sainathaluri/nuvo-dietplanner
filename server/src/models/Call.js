@@ -9,31 +9,44 @@ const CALL_COLUMNS = {
   reminderMinutesBefore: 'reminder_minutes_before',
   originalScheduledAt: 'original_scheduled_at',
   rescheduledAt: 'rescheduled_at',
+  icsSequence: 'ics_sequence',
+  consultationScheduleId: 'consultation_schedule_id',
 };
 
-// dietitianName is only present when the caller asked for it via populate() below — mirrors
-// Mongoose's .populate('dietitian', 'name') / .populate('client', 'name').
+// dietitianName/clientName/enquiryName etc. are only present when the caller asked for them via
+// the LEFT JOINs below — mirrors Mongoose's .populate('dietitian', 'name') /
+// .populate('client', 'name'). Exactly one of client_id/enquiry_id is ever set (see
+// chk_calls_client_xor_enquiry in schema.sql) — before a lead converts, a follow-up call is
+// enquiry-linked and call.client is null; call.enquiry carries the same {_id, name, phone, email}
+// shape a real client would, so display code can do `call.client?.name ?? call.enquiry?.name`
+// without caring which one it actually got.
 function mapCall(row) {
   if (!row) return null;
   const call = {
     id: row.id,
     client: row.client_id,
+    enquiry: row.enquiry_id,
     dietitian: row.dietitian_id,
     scheduledAt: row.scheduled_at,
     status: row.status,
     notes: row.notes,
     reminderMinutesBefore: row.reminder_minutes_before,
+    icsSequence: row.ics_sequence,
+    consultationScheduleId: row.consultation_schedule_id,
     originalScheduledAt: row.original_scheduled_at,
     rescheduledAt: row.rescheduled_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
   if (row.dietitian_name !== undefined) call.dietitian = { _id: row.dietitian_id, name: row.dietitian_name };
-  if (row.client_name !== undefined) call.client = { _id: row.client_id, name: row.client_name };
+  if (row.client_name !== undefined && row.client_id) call.client = { _id: row.client_id, name: row.client_name };
+  if (row.enquiry_name !== undefined && row.enquiry_id) {
+    call.enquiry = { _id: row.enquiry_id, name: row.enquiry_name, phone: row.enquiry_phone, email: row.enquiry_email };
+  }
   return call;
 }
 
-// filter: { client?, dietitian?, from?, to? }
+// filter: { client?, dietitian?, from?, to?, consultationScheduleId?, status? }
 export async function listCalls(filter = {}) {
   const where = [];
   const params = [];
@@ -53,12 +66,22 @@ export async function listCalls(filter = {}) {
     where.push('c.scheduled_at <= ?');
     params.push(filter.to);
   }
+  if (filter.consultationScheduleId) {
+    where.push('c.consultation_schedule_id = ?');
+    params.push(filter.consultationScheduleId);
+  }
+  if (filter.status) {
+    where.push('c.status = ?');
+    params.push(filter.status);
+  }
   const whereSql = where.length ? ` WHERE ${where.join(' AND ')}` : '';
   const [rows] = await pool.query(
-    `SELECT c.*, cu.name AS client_name, du.name AS dietitian_name
+    `SELECT c.*, cu.name AS client_name, du.name AS dietitian_name,
+       eq.name AS enquiry_name, eq.phone AS enquiry_phone, eq.email AS enquiry_email
      FROM calls c
-     JOIN users cu ON cu.id = c.client_id
+     LEFT JOIN users cu ON cu.id = c.client_id
      JOIN users du ON du.id = c.dietitian_id
+     LEFT JOIN enquiries eq ON eq.id = c.enquiry_id
      ${whereSql}
      ORDER BY c.scheduled_at ASC`,
     params
@@ -70,27 +93,44 @@ export async function listCalls(filter = {}) {
 // caller can read back a row it just inserted before that transaction commits.
 export async function findCallById(id, conn = pool) {
   const [rows] = await conn.query(
-    `SELECT c.*, du.name AS dietitian_name
+    `SELECT c.*, cu.name AS client_name, du.name AS dietitian_name,
+       eq.name AS enquiry_name, eq.phone AS enquiry_phone, eq.email AS enquiry_email
      FROM calls c
+     LEFT JOIN users cu ON cu.id = c.client_id
      JOIN users du ON du.id = c.dietitian_id
+     LEFT JOIN enquiries eq ON eq.id = c.enquiry_id
      WHERE c.id = ? LIMIT 1`,
     [id]
   );
   return mapCall(rows[0]);
 }
 
+// client XOR enquiry — enforced by the DB's CHECK constraint too, but validated here so a bad
+// caller gets a clear application-level error instead of a raw SQL constraint-violation message.
 export async function createCall(
-  { client, dietitian, scheduledAt, notes = null, reminderMinutesBefore = null },
+  { client = null, enquiry = null, dietitian, scheduledAt, notes = null, reminderMinutesBefore = null, consultationScheduleId = null },
   conn = pool
 ) {
+  if (Boolean(client) === Boolean(enquiry)) {
+    throw new Error('createCall requires exactly one of client or enquiry');
+  }
   const id = newId();
   await conn.query(
     `INSERT INTO calls
-      (id, client_id, dietitian_id, scheduled_at, notes, reminder_minutes_before)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [id, client, dietitian, scheduledAt, notes, reminderMinutesBefore]
+      (id, client_id, enquiry_id, dietitian_id, scheduled_at, notes, reminder_minutes_before, consultation_schedule_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, client, enquiry, dietitian, scheduledAt, notes, reminderMinutesBefore, consultationScheduleId]
   );
   return findCallById(id, conn);
+}
+
+// Re-points every enquiry-linked call onto the client account just created for that enquiry (spec
+// §2026-round2-fixes item 1: "carry over ... any scheduled follow-up calls so the new client's
+// call history isn't empty") — an UPDATE, not a copy, so the call's own id/history (reschedule
+// tracking, notes) survives unchanged; it simply stops being enquiry-scoped and becomes
+// client-scoped. Must run in the same transaction as the conversion itself.
+export async function reassignEnquiryCallsToClient(enquiryId, clientId, conn) {
+  await conn.query('UPDATE calls SET client_id = ?, enquiry_id = NULL WHERE enquiry_id = ?', [clientId, enquiryId]);
 }
 
 // The concurrency-safe read behind the availability guard: locks every still-`scheduled` call for
@@ -142,6 +182,21 @@ export async function updateCallById(id, patch, conn = pool) {
   return findCallById(id, conn);
 }
 
+// The idempotency half that lives on `calls` for a consultation schedule
+// (server/src/services/consultationScheduleService.js#generateForSchedule): every instant this
+// schedule has ever produced a call for, regardless of that call's current status or whether it's
+// since been rescheduled elsewhere — COALESCE(original_scheduled_at, scheduled_at) is the *first*
+// time the row was ever scheduled for (original_scheduled_at only gets set on the first reschedule,
+// preserving that original instant forever after), so a reschedule or cancellation on one occurrence
+// is never mistaken for "this date was never generated" on the next run.
+export async function listOccurrenceInstants(consultationScheduleId) {
+  const [rows] = await pool.query(
+    'SELECT COALESCE(original_scheduled_at, scheduled_at) AS occurrence_at FROM calls WHERE consultation_schedule_id = ?',
+    [consultationScheduleId]
+  );
+  return rows.map((row) => row.occurrence_at);
+}
+
 export async function deleteCallById(id) {
   const existing = await findCallById(id);
   if (!existing) return null;
@@ -173,13 +228,14 @@ export async function countCalls(filter = {}) {
   return Number(rows[0].count);
 }
 
-// Today's appointments for one dietitian, with client name populated — used by
-// insights.controller.js#dietitianOverview.
+// Today's appointments for one dietitian, with client (or enquiry, for a not-yet-converted
+// follow-up) name populated — used by insights.controller.js#dietitianOverview.
 export async function listCallsForDietitianInRange(dietitianId, from, to) {
   const [rows] = await pool.query(
-    `SELECT c.*, cu.name AS client_name
+    `SELECT c.*, cu.name AS client_name, eq.name AS enquiry_name, eq.phone AS enquiry_phone, eq.email AS enquiry_email
      FROM calls c
-     JOIN users cu ON cu.id = c.client_id
+     LEFT JOIN users cu ON cu.id = c.client_id
+     LEFT JOIN enquiries eq ON eq.id = c.enquiry_id
      WHERE c.dietitian_id = ? AND c.scheduled_at >= ? AND c.scheduled_at <= ?`,
     [dietitianId, from, to]
   );

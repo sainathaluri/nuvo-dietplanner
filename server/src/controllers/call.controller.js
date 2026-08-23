@@ -1,16 +1,14 @@
 import {
   listCalls as queryCalls,
   findCallById,
-  createCall as createCallRecord,
-  updateCallById,
   deleteCallById,
 } from '../models/Call.js';
 import { findUserById } from '../models/User.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { ApiError } from '../utils/ApiError.js';
 import { toClientShape } from '../utils/serialize.js';
-import { withTransaction } from '../db/pool.js';
-import { assertSlotAvailable, getAvailableSlotsForDay } from '../services/availabilityGuard.js';
+import { getAvailableSlotsForDay } from '../services/availabilityGuard.js';
+import { bookCall, applyCallUpdate } from '../services/callService.js';
 
 function scopeToOwner(req, filter = {}) {
   if (req.user.role === 'client') filter.client = req.user.id;
@@ -76,14 +74,11 @@ export const createCall = asyncHandler(async (req, res) => {
 
   // Clients can never force — see the `force` comment in call.schema.js.
   const force = req.user.role !== 'client' && Boolean(req.body.force);
-  const payload = { client, dietitian, scheduledAt, notes, reminderMinutesBefore };
 
-  const call = force
-    ? await createCallRecord(payload)
-    : await withTransaction(async (conn) => {
-        await assertSlotAvailable({ dietitianId: dietitian, scheduledAt }, conn);
-        return createCallRecord(payload, conn);
-      });
+  // Availability check, transaction handling, and the booking-email notification all live in
+  // callService.js — the same function enquiry.controller.js's Follow-up flow calls, so a booking
+  // can never skip the email just because it came from a different entry point.
+  const call = await bookCall({ client, dietitian, scheduledAt, notes, reminderMinutesBefore, force });
 
   res.status(201).json(toClientShape(call));
 });
@@ -110,28 +105,11 @@ export const updateCall = asyncHandler(async (req, res) => {
     }
   }
 
-  // Only a reschedule (scheduledAt changing) needs re-checking — cancelling, completing, or
-  // editing notes/reminders doesn't touch the slot. Clients can never force (see call.schema.js).
-  const dietitianId = call.dietitian?._id ?? call.dietitian;
+  // Clients can never force (see call.schema.js). Reschedule/cancellation transition detection,
+  // the .ics SEQUENCE bump, availability re-checking, and the reschedule/cancellation email
+  // notifications all live in callService.js now.
   const force = req.user.role !== 'client' && Boolean(req.body.force);
-
-  // A genuine reschedule (the new time differs from the current one) stamps rescheduledAt and
-  // preserves the call's original time — a reschedule updates this same row in place, so without
-  // this the client profile's call history would have no way to show it was ever moved (spec §6
-  // item 4). Re-rescheduling again just bumps rescheduledAt; originalScheduledAt only ever
-  // captures the very first time.
-  let patch = req.body;
-  if (req.body.scheduledAt && new Date(req.body.scheduledAt).getTime() !== new Date(call.scheduledAt).getTime()) {
-    patch = { ...req.body, rescheduledAt: new Date(), originalScheduledAt: call.originalScheduledAt ?? call.scheduledAt };
-  }
-
-  const updated =
-    req.body.scheduledAt && !force
-      ? await withTransaction(async (conn) => {
-          await assertSlotAvailable({ dietitianId, scheduledAt: req.body.scheduledAt, excludeCallId: call.id }, conn);
-          return updateCallById(req.params.id, patch, conn);
-        })
-      : await updateCallById(req.params.id, patch);
+  const updated = await applyCallUpdate(req.params.id, call, req.body, { force });
 
   res.json(toClientShape(updated));
 });

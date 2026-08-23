@@ -10,6 +10,7 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { ApiError } from '../utils/ApiError.js';
 import { assertDietitianOwnsClient } from '../utils/scope.js';
 import { toClientShape } from '../utils/serialize.js';
+import { notifyPlanPublished } from '../services/planNotifications.js';
 
 function scopeToOwner(req, filter = {}) {
   if (req.user.role === 'client') filter.client = req.user.id;
@@ -49,6 +50,10 @@ export const createPlan = asyncHandler(async (req, res) => {
   }
 
   const plan = await createPlanRecord({ client, dietitian, ...rest });
+  // Unusual (the builder always creates a plan as a draft, then publishes via a separate PATCH —
+  // see updatePlan below) but handled for correctness: a plan created already-published still
+  // needs the notification.
+  if (plan.published) await notifyPlanPublished(plan);
   res.status(201).json(toClientShape(plan));
 });
 
@@ -57,7 +62,13 @@ export const updatePlan = asyncHandler(async (req, res) => {
   if (!existing) throw ApiError.notFound('Plan not found');
   if (req.user.role === 'dietitian' && String(existing.dietitian) !== req.user.id) throw ApiError.forbidden();
 
+  // A genuine publish (false/undefined → true) — not every autosave, and not a repeat "publish" of
+  // an already-published plan. See docs/API.md for why this is what "published" means here.
+  const isPublishing = req.body.published === true && !existing.published;
+
   const plan = await updatePlanById(req.params.id, req.body);
+  if (isPublishing) await notifyPlanPublished(plan);
+
   res.json(toClientShape(plan));
 });
 
