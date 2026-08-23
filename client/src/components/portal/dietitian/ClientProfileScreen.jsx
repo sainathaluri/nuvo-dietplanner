@@ -17,6 +17,10 @@ const ClientProgressTab = lazyNamed(() => import('./ClientProgressTab'), 'Client
 const ClientMealsTab = lazyNamed(() => import('./ClientMealsTab'), 'ClientMealsTab');
 const ClientCallsTab = lazyNamed(() => import('./ClientCallsTab'), 'ClientCallsTab');
 const ClientNotesTab = lazyNamed(() => import('./ClientNotesTab'), 'ClientNotesTab');
+const ConsultationScheduleTab = lazyNamed(
+  () => import('../shared/ConsultationScheduleTab'),
+  'ConsultationScheduleTab'
+);
 
 const TAB_FALLBACK = <Skeleton className="h-64 w-full" />;
 
@@ -73,6 +77,7 @@ export function ClientProfileScreen() {
               <TabsTrigger value="meals">Meal plans</TabsTrigger>
               <TabsTrigger value="calls">Calls</TabsTrigger>
               <TabsTrigger value="notes">Notes</TabsTrigger>
+              <TabsTrigger value="settings">Settings</TabsTrigger>
             </TabsList>
 
             <TabsContent value="overview" className="mt-4">
@@ -98,6 +103,11 @@ export function ClientProfileScreen() {
             <TabsContent value="notes" className="mt-4">
               <Suspense fallback={TAB_FALLBACK}>
                 <ClientNotesTab clientId={client._id} />
+              </Suspense>
+            </TabsContent>
+            <TabsContent value="settings" className="mt-4">
+              <Suspense fallback={TAB_FALLBACK}>
+                <ConsultationScheduleTab clientId={client._id} />
               </Suspense>
             </TabsContent>
           </Tabs>
