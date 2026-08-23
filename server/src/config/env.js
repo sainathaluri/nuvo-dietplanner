@@ -21,4 +21,14 @@ export const env = {
   resendApiKey: process.env.RESEND_API_KEY || '',
   emailFrom: process.env.EMAIL_FROM || 'Nourishly <onboarding@resend.dev>',
   passwordResetTokenTtlMinutes: Number(process.env.PASSWORD_RESET_TOKEN_TTL_MINUTES || 60),
+  // Notification engine (server/src/emails/). emailTransport is left as whatever was configured
+  // (or undefined) here — transport/index.js#resolveTransportKind is what actually enforces the
+  // "never a real send outside production" rule; env.js just passes the raw setting through.
+  emailTransport: process.env.EMAIL_TRANSPORT || '',
+  emailQueuePollIntervalMs: Number(process.env.EMAIL_QUEUE_POLL_INTERVAL_MS || 5000),
+  emailQueueBatchSize: Number(process.env.EMAIL_QUEUE_BATCH_SIZE || 10),
+  emailMaxAttempts: Number(process.env.EMAIL_MAX_ATTEMPTS || 5),
+  // Consultation schedule rolling-window generator (server/src/services/consultationScheduleJob.js).
+  // Default 24h — the window is 60 days, so it never needs sub-daily freshness.
+  consultationScheduleJobIntervalMs: Number(process.env.CONSULTATION_SCHEDULE_JOB_INTERVAL_MS || 24 * 60 * 60 * 1000),
 };

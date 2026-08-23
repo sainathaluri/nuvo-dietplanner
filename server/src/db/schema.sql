@@ -25,6 +25,17 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash VARCHAR(255) NOT NULL,
   role ENUM('client', 'dietitian', 'admin') NOT NULL DEFAULT 'client',
   phone VARCHAR(50),
+  -- address/qualifications are meaningful for role='dietitian' (spec §2026-round2-fixes items 2/3
+  -- — a dietitian's profile needs full contact + credential details); left generic on `users`
+  -- rather than a separate dietitian-only table, same convention already used for phone/timezone.
+  address VARCHAR(255) NULL,
+  qualifications TEXT NULL,
+  -- Deliberately never touches assigned_dietitian_id, calls, or plans on its own — see the
+  -- account_status comment further down and enquiry.controller.js-style "don't silently orphan"
+  -- reasoning in docs/worklog/2026-08-23.md. 'suspended' blocks login (middleware/authenticate.js);
+  -- 'inactive' does not — a dietitian temporarily not taking new work can still manage their
+  -- existing clients/calls. Neither state hides or cancels any existing call/assignment.
+  account_status ENUM('active', 'inactive', 'suspended') NOT NULL DEFAULT 'active',
   assigned_dietitian_id VARCHAR(36) NULL,
   refresh_token_version INT NOT NULL DEFAULT 0,
   -- DB-level default is FALSE, never TRUE: an ALTER that defaulted existing rows to TRUE would
@@ -37,6 +48,12 @@ CREATE TABLE IF NOT EXISTS users (
   -- client creation/edit time by an admin. See program_plans above.
   program_plan_id VARCHAR(36) NULL,
   plan_duration VARCHAR(50) NULL,
+  -- IANA zone name (e.g. "Asia/Kolkata"), meaningful for role='dietitian' — the wall-clock frame
+  -- `dietitian_weekly_hours`/exceptions are interpreted in (see availability.js's module comment).
+  -- Defaults to 'UTC', never a guessed real zone, so introducing this column is non-breaking: a
+  -- dietitian who hasn't set their real timezone yet keeps exactly the pre-timezone comparison
+  -- behavior (UTC-as-local) rather than being silently relocated.
+  timezone VARCHAR(64) NOT NULL DEFAULT 'UTC',
   created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   UNIQUE KEY uq_users_email (email),
@@ -123,33 +140,109 @@ CREATE TABLE IF NOT EXISTS plans (
 -- plan.meals.indexOf(meal) both address a meal by its position in the array, so meals are always
 -- read back ORDER BY idx. No id is exposed on meal rows in JSON (the original mealSlotSchema had
 -- `{ _id: false }`, and the client never reads meal._id).
+-- `meal_type` (spec §2026-round2-fixes item 4): relaxed from a fixed 4-value ENUM to free text,
+-- same convention already used for recipes.meal_type — the plan builder's dropdown still offers
+-- exactly the 4 fixed values plus a 'Custom' UI-only sentinel that reveals a free-text input; the
+-- typed name is what's actually saved here, and whether a saved meal is "custom" is derived by
+-- membership in the fixed list, not a separate flag. `recipe_id`/`custom_title` are mutually
+-- exclusive (never both set — a slot references a catalog recipe OR a manually typed one, or
+-- neither if the slot hasn't been filled in yet), enforced below by CHECK, not just in application
+-- code.
 CREATE TABLE IF NOT EXISTS plan_meals (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
   plan_id VARCHAR(36) NOT NULL,
   idx INT NOT NULL,
   day VARCHAR(20) NOT NULL,
   time VARCHAR(20) NOT NULL,
-  meal_type ENUM('Breakfast', 'Lunch', 'Snack', 'Dinner') NOT NULL,
+  meal_type VARCHAR(50) NOT NULL,
   recipe_id VARCHAR(36) NULL,
+  custom_title VARCHAR(255) NULL,
   completed BOOLEAN NOT NULL DEFAULT FALSE,
   swap_requested BOOLEAN NOT NULL DEFAULT FALSE,
   notes TEXT NULL,
   KEY idx_plan_meals_plan (plan_id, idx),
   KEY idx_plan_meals_recipe (recipe_id),
   CONSTRAINT fk_plan_meals_plan FOREIGN KEY (plan_id) REFERENCES plans(id) ON DELETE CASCADE,
-  CONSTRAINT fk_plan_meals_recipe FOREIGN KEY (recipe_id) REFERENCES recipes(id) ON DELETE SET NULL
+  CONSTRAINT fk_plan_meals_recipe FOREIGN KEY (recipe_id) REFERENCES recipes(id) ON DELETE SET NULL,
+  CONSTRAINT chk_plan_meals_recipe_or_custom CHECK (recipe_id IS NULL OR custom_title IS NULL)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- `reminder_minutes_before` (minutes, or NULL for none) drives the client's in-app pop-up
 -- reminder — see client/src/hooks/useCallReminders.js.
-CREATE TABLE IF NOT EXISTS calls (
+-- Recurring "consultation schedule" per client — one row per client (uq_consultation_schedules_client),
+-- not loose fields on `users`, so the recurrence config has its own identity that `calls` rows can
+-- point back to (consultation_schedule_id below). The dietitian is deliberately NOT stored here —
+-- always read live from `users.assigned_dietitian_id` at generation/validation time, so reassigning
+-- a client to a different dietitian is picked up automatically instead of leaving a stale reference.
+-- `frequency_days` collapses the UI's "Every 7 days / Every 14 days / Custom N days" into one
+-- integer — there's no separate "which preset" column, the UI derives the preset from the value.
+-- `preferred_weekday` matches `dietitian_weekly_hours.weekday`'s exact convention (0=Sunday, JS
+-- Date#getUTCDay()); `preferred_time` is wall-clock in the dietitian's own timezone, same
+-- convention as `dietitian_weekly_hours.start_time`/`end_time` — not a raw UTC time.
+-- `active` is the paused flag (FALSE = paused): a paused schedule never generates new occurrences,
+-- but never touches calls already booked from it either (see server/src/services/
+-- consultationScheduleService.js — every change to already-booked future calls is an explicit,
+-- asked-for action, never an automatic side effect of pausing or editing).
+CREATE TABLE IF NOT EXISTS consultation_schedules (
   id VARCHAR(36) PRIMARY KEY,
   client_id VARCHAR(36) NOT NULL,
+  frequency_days INT NOT NULL,
+  preferred_weekday TINYINT NOT NULL,
+  preferred_time TIME NOT NULL,
+  start_date DATE NOT NULL,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  UNIQUE KEY uq_consultation_schedules_client (client_id),
+  CONSTRAINT fk_consultation_schedules_client FOREIGN KEY (client_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- One row per occurrence the rolling-window generator (server/src/services/
+-- consultationScheduleService.js#generateForSchedule) could NOT place — a real scheduling conflict
+-- (blocked/outside hours/overlap) on that specific date, flagged for a human to resolve rather than
+-- silently skipped or silently rescheduled to a different time. `occurrence_at` is the originally
+-- INTENDED instant (same "occurrence identity" concept as calls' own
+-- COALESCE(original_scheduled_at, scheduled_at) — see the generator's own comment) — this is what
+-- makes generation idempotent for a date that keeps failing: it's flagged once, not once per job run.
+CREATE TABLE IF NOT EXISTS consultation_schedule_gaps (
+  id VARCHAR(36) PRIMARY KEY,
+  consultation_schedule_id VARCHAR(36) NOT NULL,
+  occurrence_at DATETIME(3) NOT NULL,
+  reason VARCHAR(255) NOT NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  KEY idx_consultation_schedule_gaps_schedule (consultation_schedule_id, occurrence_at),
+  CONSTRAINT fk_consultation_schedule_gaps_schedule FOREIGN KEY (consultation_schedule_id) REFERENCES consultation_schedules(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS calls (
+  id VARCHAR(36) PRIMARY KEY,
+  -- Exactly one of client_id/enquiry_id is ever set (see chk_calls_client_xor_enquiry below) — a
+  -- call is either with a real client account or, before conversion, with a lead that only exists
+  -- as an enquiry (spec §2026-round2-fixes item 1: Follow-up must not force-create an account).
+  -- Nullable specifically so an enquiry-linked call is never forced to carry a fake/placeholder
+  -- client id — see enquiry.controller.js for how a call is re-pointed from enquiry_id to
+  -- client_id once (and only once) the lead is actually marked Converted.
+  client_id VARCHAR(36) NULL,
+  enquiry_id VARCHAR(36) NULL,
   dietitian_id VARCHAR(36) NOT NULL,
   scheduled_at DATETIME(3) NOT NULL,
   status ENUM('scheduled', 'completed', 'cancelled') NOT NULL DEFAULT 'scheduled',
   notes TEXT,
   reminder_minutes_before INT NULL,
+  -- The iCalendar SEQUENCE for this appointment's invite (server/src/emails/ics.js). Starts at 0 on
+  -- booking; incremented on every reschedule and again on cancellation, alongside the same
+  -- deterministic UID (`call-<id>@nourishly.app`, derived from this row's own id, never stored) —
+  -- so a calendar client recognizes a reschedule/cancel as an update to the one event it already
+  -- has instead of creating a second one.
+  ics_sequence INT NOT NULL DEFAULT 0,
+  -- Set only for a call generated by consultation_schedules (server/src/services/
+  -- consultationScheduleService.js#generateOccurrences) — NULL for every ad-hoc, manually booked
+  -- call. This is what lets "the upcoming calls this schedule already produced" be queried as a
+  -- real, inspectable set (the exact capability the old, removed "Repeat Call" feature never had —
+  -- see the 2026-08-22 removal in docs/worklog/). ON DELETE SET NULL, not CASCADE: a schedule being
+  -- removed must never delete a real, already-booked/already-notified call — it just stops being
+  -- attributed to that schedule.
+  consultation_schedule_id VARCHAR(36) NULL,
   -- Set the first time a still-`scheduled` call's `scheduled_at` changes (see call.controller.js#updateCall)
   -- so the client profile's call history can show a "Rescheduled" badge and the original time — a
   -- reschedule updates this same row in place rather than creating a new one, so without these two
@@ -159,6 +252,7 @@ CREATE TABLE IF NOT EXISTS calls (
   created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   KEY idx_calls_client (client_id),
+  KEY idx_calls_enquiry (enquiry_id),
   KEY idx_calls_dietitian (dietitian_id),
   KEY idx_calls_scheduled_at (scheduled_at),
   -- Lets the availability guard's `SELECT ... FOR UPDATE` range query (Call.js#lockOverlappingCalls)
@@ -166,8 +260,12 @@ CREATE TABLE IF NOT EXISTS calls (
   -- idx_calls_dietitian alone, which would gap-lock every row for that dietitian regardless of
   -- scheduled_at — verified via EXPLAIN to cause real lock contention between unrelated bookings.
   KEY idx_calls_dietitian_scheduled (dietitian_id, scheduled_at),
+  KEY idx_calls_consultation_schedule (consultation_schedule_id),
   CONSTRAINT fk_calls_client FOREIGN KEY (client_id) REFERENCES users(id) ON DELETE CASCADE,
-  CONSTRAINT fk_calls_dietitian FOREIGN KEY (dietitian_id) REFERENCES users(id) ON DELETE CASCADE
+  CONSTRAINT fk_calls_enquiry FOREIGN KEY (enquiry_id) REFERENCES enquiries(id) ON DELETE CASCADE,
+  CONSTRAINT fk_calls_dietitian FOREIGN KEY (dietitian_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_calls_consultation_schedule FOREIGN KEY (consultation_schedule_id) REFERENCES consultation_schedules(id) ON DELETE SET NULL,
+  CONSTRAINT chk_calls_client_xor_enquiry CHECK ((client_id IS NULL) <> (enquiry_id IS NULL))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Append-only audit log: one row per status change, never overwritten or edited. `call_id` is
@@ -288,6 +386,35 @@ CREATE TABLE IF NOT EXISTS password_reset_tokens (
   UNIQUE KEY uq_password_reset_tokens_hash (token_hash),
   KEY idx_password_reset_tokens_user (user_id),
   CONSTRAINT fk_password_reset_tokens_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Notification engine foundation: doubles as both the send queue and the audit log (one row per
+-- sendEmail() call, from queued through its final sent/failed state — see server/src/emails/).
+-- `params` (the render inputs, not the rendered body) is persisted so the worker can re-render and
+-- retry after a process restart without the caller keeping anything in memory.
+-- `related_entity_type`/`related_entity_id` is a polymorphic reference (client/appointment/enquiry)
+-- with no FK, since a single column pair can't target three different tables.
+CREATE TABLE IF NOT EXISTS email_log (
+  id VARCHAR(36) PRIMARY KEY,
+  idempotency_key VARCHAR(191) NOT NULL,
+  to_email VARCHAR(255) NOT NULL,
+  template_key VARCHAR(100) NOT NULL,
+  subject VARCHAR(255) NULL,
+  params JSON NOT NULL,
+  related_entity_type ENUM('client', 'appointment', 'enquiry') NULL,
+  related_entity_id VARCHAR(36) NULL,
+  status ENUM('queued', 'sending', 'sent', 'failed') NOT NULL DEFAULT 'queued',
+  attempts INT NOT NULL DEFAULT 0,
+  max_attempts INT NOT NULL DEFAULT 5,
+  next_attempt_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  provider_message_id VARCHAR(255) NULL,
+  error TEXT NULL,
+  sent_at DATETIME(3) NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  UNIQUE KEY uq_email_log_idempotency (idempotency_key),
+  KEY idx_email_log_status_next_attempt (status, next_attempt_at),
+  KEY idx_email_log_related (related_entity_type, related_entity_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- A dietitian's recurring weekly template. One row per open weekday; a weekday with no row is

@@ -3,3 +3,4 @@ node_modules/
 uploads/*
 !uploads/.gitkeep
 dev-verify-mysql.mjs
+.local/

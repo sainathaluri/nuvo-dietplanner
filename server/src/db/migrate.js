@@ -62,6 +62,43 @@ const ALTERS = [
   'ALTER TABLE plan_meals ADD COLUMN notes TEXT NULL AFTER swap_requested',
   'ALTER TABLE calls ADD COLUMN original_scheduled_at DATETIME(3) NULL AFTER reminder_minutes_before',
   'ALTER TABLE calls ADD COLUMN rescheduled_at DATETIME(3) NULL AFTER original_scheduled_at',
+  // Timezone fix (docs/specs/2026-round2-fixes.md item 7): default 'UTC', not a guessed real
+  // zone — see the comment on this column in schema.sql for why that's the non-breaking choice.
+  "ALTER TABLE users ADD COLUMN timezone VARCHAR(64) NOT NULL DEFAULT 'UTC' AFTER plan_duration",
+  // Enquiry-linked calls (spec §2026-round2-fixes item 1): a Follow-up call no longer force-creates
+  // a client account, so calls.client_id must accept NULL, paired with a new enquiry_id — see the
+  // comment on these columns in schema.sql. Order matters: widen client_id to NULL first, then add
+  // enquiry_id, then the CHECK last (it would reject the table if added before client_id allows NULL
+  // and every existing row already satisfies "client_id set, enquiry_id NULL").
+  'ALTER TABLE calls MODIFY COLUMN client_id VARCHAR(36) NULL',
+  'ALTER TABLE calls ADD COLUMN enquiry_id VARCHAR(36) NULL AFTER client_id',
+  'ALTER TABLE calls ADD KEY idx_calls_enquiry (enquiry_id)',
+  'ALTER TABLE calls ADD CONSTRAINT fk_calls_enquiry FOREIGN KEY (enquiry_id) REFERENCES enquiries(id) ON DELETE CASCADE',
+  'ALTER TABLE calls ADD CONSTRAINT chk_calls_client_xor_enquiry CHECK ((client_id IS NULL) <> (enquiry_id IS NULL))',
+  // Dietitian profile fields + account status (spec §2026-round2-fixes items 2/3). Default
+  // 'active' — same non-breaking-default reasoning as must_change_password/timezone above.
+  'ALTER TABLE users ADD COLUMN address VARCHAR(255) NULL AFTER phone',
+  'ALTER TABLE users ADD COLUMN qualifications TEXT NULL AFTER address',
+  "ALTER TABLE users ADD COLUMN account_status ENUM('active', 'inactive', 'suspended') NOT NULL DEFAULT 'active' AFTER qualifications",
+  // Custom meal types/recipes in the weekly plan builder (spec §2026-round2-fixes item 4): relax
+  // the fixed 4-value ENUM to free text (same MODIFY-is-a-no-op-when-already-applied reasoning as
+  // recipes.meal_type above), add custom_title for a manually typed recipe name, and enforce the
+  // two are mutually exclusive at the DB level too. Order matters: the CHECK must come after
+  // custom_title exists, and every existing row already satisfies it (recipe_id set or NULL,
+  // custom_title always NULL until now).
+  'ALTER TABLE plan_meals MODIFY COLUMN meal_type VARCHAR(50) NOT NULL',
+  'ALTER TABLE plan_meals ADD COLUMN custom_title VARCHAR(255) NULL AFTER recipe_id',
+  'ALTER TABLE plan_meals ADD CONSTRAINT chk_plan_meals_recipe_or_custom CHECK (recipe_id IS NULL OR custom_title IS NULL)',
+  // .ics SEQUENCE for the booking/reschedule/cancellation calendar invite (server/src/emails/ics.js)
+  // — see the comment on this column in schema.sql.
+  'ALTER TABLE calls ADD COLUMN ics_sequence INT NOT NULL DEFAULT 0 AFTER reminder_minutes_before',
+  // Consultation schedule (server/src/services/consultationScheduleService.js): consultation_schedules
+  // itself is a brand-new table, created via schema.sql's own CREATE TABLE IF NOT EXISTS — only this
+  // new calls column needs backfilling here, and only after that table exists (schema.sql's CREATEs
+  // always run before this ALTERS array — see migrate() below).
+  'ALTER TABLE calls ADD COLUMN consultation_schedule_id VARCHAR(36) NULL AFTER ics_sequence',
+  'ALTER TABLE calls ADD KEY idx_calls_consultation_schedule (consultation_schedule_id)',
+  'ALTER TABLE calls ADD CONSTRAINT fk_calls_consultation_schedule FOREIGN KEY (consultation_schedule_id) REFERENCES consultation_schedules(id) ON DELETE SET NULL',
 ];
 
 async function migrate() {
@@ -84,7 +121,8 @@ async function migrate() {
         err.code === 'ER_DUP_FIELDNAME' ||
         err.code === 'ER_DUP_KEYNAME' ||
         err.errno === 1826 /* dup FK */ ||
-        err.errno === 1091 /* ER_CANT_DROP_FIELD_OR_KEY */
+        err.errno === 1091 /* ER_CANT_DROP_FIELD_OR_KEY */ ||
+        err.errno === 3822 /* ER_CHECK_CONSTRAINT_DUP_NAME */
       ) {
         console.log(`[migrate] already applied, skipping: ${statement}`);
       } else {
