@@ -10,6 +10,10 @@ export function DietitianCallCard({ call, onReschedule }) {
   const [confirmingCancel, setConfirmingCancel] = useState(false);
   const updateCall = useUpdateCall();
   const isScheduled = call.status === 'scheduled';
+  // A follow-up call booked directly against an enquiry (spec §2026-round2-fixes item 1) has no
+  // client yet — call.enquiry carries the same {name, phone, email} shape a client would, so this
+  // falls back to it rather than showing a generic "Client" placeholder.
+  const person = call.client ?? call.enquiry;
 
   function setStatus(status) {
     updateCall.mutate(
@@ -27,10 +31,17 @@ export function DietitianCallCard({ call, onReschedule }) {
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="grid size-9 shrink-0 place-items-center rounded-full bg-sage font-semibold text-forest">
-            {call.client?.name?.[0] ?? 'C'}
+            {person?.name?.[0] ?? 'C'}
           </div>
           <div>
-            <strong className="block text-sm text-forest">{call.client?.name ?? 'Client'}</strong>
+            <div className="flex items-center gap-1.5">
+              <strong className="text-sm text-forest">{person?.name ?? 'Client'}</strong>
+              {call.enquiry && (
+                <Badge variant="outline" className="text-[10px]">
+                  Lead
+                </Badge>
+              )}
+            </div>
             <span className="text-xs text-muted-foreground">
               {formatDate(call.scheduledAt, { weekday: 'long', day: 'numeric', month: 'short' })} · {formatTime(call.scheduledAt)}
             </span>
@@ -40,6 +51,8 @@ export function DietitianCallCard({ call, onReschedule }) {
           {call.status}
         </Badge>
       </div>
+
+      {call.enquiry && <p className="mt-2 text-xs text-muted-foreground">{call.enquiry.phone} · {call.enquiry.email}</p>}
 
       {call.notes && <p className="mt-2 text-sm text-forest">{call.notes}</p>}
 

@@ -5,56 +5,40 @@ import { z } from 'zod';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SlotPicker, todayDateValue } from '@/components/portal/shared/SlotPicker';
 import { useDietitians } from '@/hooks/useClients';
-import { useProgramPlans } from '@/hooks/useProgramPlans';
 import { useUpdateEnquiry } from '@/hooks/useEnquiries';
-import { PLAN_DURATIONS } from '@/lib/planDurations';
 
-// A lead only ever gets a client account created once — the password/plan fields are only shown
-// (and only required, via manual form.setError in onSubmit — needsAccount isn't a form field, so
-// zod can't see it) the first time either "Follow-up" or "Converted" is reached.
+// Books a real call directly against the enquiry — no client account exists yet (spec
+// §2026-round2-fixes item 1: that only happens on an explicit "Successfully Converted / Won").
 const schema = z.object({
   dietitian: z.string().min(1, 'Choose a dietitian'),
   scheduledAt: z.string().min(1, 'Choose an available time'),
-  planId: z.string().optional(),
-  planDuration: z.string().optional(),
-  password: z.string().optional(),
   note: z.string().optional(),
 });
 
 // enquiry: the card being moved to "Follow-up" (never null while open).
 export function EnquiryFollowUpDialog({ open, onOpenChange, enquiry }) {
-  const needsAccount = !enquiry.convertedUserId;
   const updateEnquiry = useUpdateEnquiry();
   const { data: dietitians } = useDietitians();
-  const { data: programPlans } = useProgramPlans({ activeOnly: true });
   const [date, setDate] = useState(todayDateValue());
 
   const form = useForm({
     resolver: zodResolver(schema),
-    defaultValues: { dietitian: '', scheduledAt: '', planId: '', planDuration: '', password: '', note: '' },
+    defaultValues: { dietitian: '', scheduledAt: '', note: '' },
   });
   const dietitian = form.watch('dietitian');
 
   useEffect(() => {
     if (!open) return;
-    form.reset({ dietitian: '', scheduledAt: '', planId: '', planDuration: '', password: '', note: '' });
+    form.reset({ dietitian: '', scheduledAt: '', note: '' });
     setDate(todayDateValue());
   }, [open, form]);
 
   function onSubmit(values) {
-    if (needsAccount && (!values.planId || !values.planDuration || !values.password)) {
-      if (!values.planId) form.setError('planId', { message: 'Choose a plan' });
-      if (!values.planDuration) form.setError('planDuration', { message: 'Choose a duration' });
-      if (!values.password) form.setError('password', { message: 'Set a temporary password' });
-      return;
-    }
-
     updateEnquiry.mutate(
       {
         enquiryId: enquiry._id,
@@ -62,7 +46,6 @@ export function EnquiryFollowUpDialog({ open, onOpenChange, enquiry }) {
         dietitian: values.dietitian,
         scheduledAt: values.scheduledAt,
         note: values.note || undefined,
-        ...(needsAccount && { planId: values.planId, planDuration: values.planDuration, password: values.password }),
       },
       {
         onSuccess: () => {
@@ -80,9 +63,8 @@ export function EnquiryFollowUpDialog({ open, onOpenChange, enquiry }) {
         <DialogHeader>
           <DialogTitle>Schedule a follow-up for {enquiry.name}</DialogTitle>
           <DialogDescription>
-            {needsAccount
-              ? 'This creates their client account and books a real call.'
-              : 'Books a real call on their existing account.'}
+            Books a real call held against this enquiry — {enquiry.name} doesn't get a client account until
+            they're marked Successfully Converted / Won.
           </DialogDescription>
         </DialogHeader>
 
@@ -133,72 +115,6 @@ export function EnquiryFollowUpDialog({ open, onOpenChange, enquiry }) {
                   </FormItem>
                 )}
               />
-            )}
-
-            {needsAccount && (
-              <>
-                <FormField
-                  control={form.control}
-                  name="planId"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Plan</FormLabel>
-                      <Select value={field.value} onValueChange={field.onChange}>
-                        <FormControl>
-                          <SelectTrigger className="w-full">
-                            <SelectValue placeholder="Choose a plan" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {(programPlans ?? []).map((p) => (
-                            <SelectItem key={p._id} value={p._id}>
-                              {p.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="planDuration"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Plan duration</FormLabel>
-                      <Select value={field.value} onValueChange={field.onChange}>
-                        <FormControl>
-                          <SelectTrigger className="w-full">
-                            <SelectValue placeholder="Choose a duration" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {PLAN_DURATIONS.map((duration) => (
-                            <SelectItem key={duration} value={duration}>
-                              {duration}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="password"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Temporary password</FormLabel>
-                      <FormControl>
-                        <Input type="password" autoComplete="new-password" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </>
             )}
 
             <FormField

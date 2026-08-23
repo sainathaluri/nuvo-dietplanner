@@ -26,8 +26,8 @@ export async function listClientNotes(clientId) {
   return rows.map(mapClientNote);
 }
 
-export async function findClientNoteById(id) {
-  const [rows] = await pool.query(
+export async function findClientNoteById(id, conn = pool) {
+  const [rows] = await conn.query(
     `SELECT cn.*, u.name AS author_name
      FROM client_notes cn
      JOIN users u ON u.id = cn.author_id
@@ -37,15 +37,18 @@ export async function findClientNoteById(id) {
   return mapClientNote(rows[0]);
 }
 
-export async function createClientNote({ client, author, body }) {
+// conn: pass the caller's own transaction connection when creating a note as part of a larger
+// atomic operation (e.g. enquiry.controller.js copying enquiry history onto a newly-converted
+// client) — see findUserById's own conn comment for why reading back needs the same connection.
+export async function createClientNote({ client, author, body }, conn = pool) {
   const id = newId();
-  await pool.query('INSERT INTO client_notes (id, client_id, author_id, body) VALUES (?, ?, ?, ?)', [
+  await conn.query('INSERT INTO client_notes (id, client_id, author_id, body) VALUES (?, ?, ?, ?)', [
     id,
     client,
     author,
     body,
   ]);
-  return findClientNoteById(id);
+  return findClientNoteById(id, conn);
 }
 
 export async function updateClientNoteById(id, { body }) {

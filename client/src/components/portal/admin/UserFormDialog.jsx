@@ -7,40 +7,90 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from '@/components/ui/button';
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useDietitians } from '@/hooks/useClients';
 import { useProgramPlans } from '@/hooks/useProgramPlans';
 import { useCreateUser } from '@/hooks/useUsers';
+import { useSaveConsultationSchedule } from '@/hooks/useConsultationSchedule';
 import { PLAN_DURATIONS } from '@/lib/planDurations';
+import { defaultConsultationScheduleValues, toApiPayload } from '@/lib/consultationSchedule';
+import { ConsultationScheduleFields } from '@/components/portal/shared/ConsultationScheduleFields';
 
-const schema = z.object({
-  name: z.string().min(1, 'Enter a name'),
-  email: z.string().email('Enter a valid email'),
-  password: z.string().min(8, 'At least 8 characters'),
-  role: z.enum(['client', 'dietitian', 'admin']),
-  assignedDietitian: z.string().optional(),
-  programPlan: z.string().optional(),
-  planDuration: z.string().optional(),
-});
+// Same lenient-but-real phone pattern as the server (server/src/schemas/user.schema.js) — kept in
+// sync by hand, same "no shared package" convention as PLAN_DURATIONS.
+const PHONE_PATTERN = /^[+\d][\d\s\-().]{6,19}$/;
+
+// Phone/address are only required for a dietitian (spec §2026-round2-fixes item 1's explicit "Add
+// and require: Email, Phone Number, Address") — enforced below via superRefine, mirroring the
+// server's own createUserSchema so a client never gets a 400 the form itself could have caught.
+const schema = z
+  .object({
+    name: z.string().min(1, 'Enter a name'),
+    email: z.string().email('Enter a valid email'),
+    password: z.string().min(8, 'At least 8 characters'),
+    role: z.enum(['client', 'dietitian', 'admin']),
+    phone: z.string().optional(),
+    address: z.string().optional(),
+    qualifications: z.string().optional(),
+    assignedDietitian: z.string().optional(),
+    programPlan: z.string().optional(),
+    planDuration: z.string().optional(),
+    // Consultation schedule (client role only) — same field names ConsultationScheduleFields.jsx
+    // expects, so it can bind directly to this same form; only actually required when the
+    // "Set up a consultation schedule now" checkbox is on (see the superRefine below). Saving
+    // works with or without a dietitian assigned — see consultationScheduleService.js.
+    setUpSchedule: z.boolean().optional(),
+    frequencyPreset: z.enum(['7', '14', 'custom']).optional(),
+    customFrequencyDays: z.string().optional(),
+    preferredWeekday: z.string().optional(),
+    preferredTime: z.string().optional(),
+    startDate: z.string().optional(),
+    active: z.enum(['true', 'false']).optional(),
+  })
+  .superRefine((data, ctx) => {
+    // Format is checked regardless of role — a client/admin's phone, if they bother typing one,
+    // should be rejected here too rather than only on the server's own round-trip.
+    if (data.phone?.trim() && !PHONE_PATTERN.test(data.phone.trim())) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Enter a valid phone number', path: ['phone'] });
+    }
+    if (data.role === 'client' && data.setUpSchedule && data.frequencyPreset === 'custom' && !data.customFrequencyDays) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Enter a number of days', path: ['customFrequencyDays'] });
+    }
+    if (data.role !== 'dietitian') return;
+    if (!data.phone?.trim()) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Phone number is required for a dietitian', path: ['phone'] });
+    }
+    if (!data.address?.trim()) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Address is required for a dietitian', path: ['address'] });
+    }
+  });
 
 const EMPTY = {
   name: '',
   email: '',
   password: '',
   role: 'client',
+  phone: '',
+  address: '',
+  qualifications: '',
   assignedDietitian: 'none',
   programPlan: 'none',
   planDuration: 'none',
+  setUpSchedule: false,
+  ...defaultConsultationScheduleValues(),
 };
 
 // Admin-only: create a new client, dietitian, or admin account directly (no self-registration needed).
 export function UserFormDialog({ open, onOpenChange }) {
   const createUser = useCreateUser();
+  const saveSchedule = useSaveConsultationSchedule();
   const { data: dietitians } = useDietitians();
   const { data: programPlans } = useProgramPlans({ activeOnly: true });
 
   const form = useForm({ resolver: zodResolver(schema), defaultValues: EMPTY });
   const role = form.watch('role');
+  const setUpSchedule = form.watch('setUpSchedule');
 
   useEffect(() => {
     if (open) form.reset(EMPTY);
@@ -52,15 +102,27 @@ export function UserFormDialog({ open, onOpenChange }) {
       email: values.email,
       password: values.password,
       role: values.role,
+      phone: values.phone || undefined,
+      address: values.address || undefined,
+      qualifications: values.role === 'dietitian' && values.qualifications ? values.qualifications : undefined,
       assignedDietitian: values.role === 'client' && values.assignedDietitian !== 'none' ? values.assignedDietitian : null,
       programPlan: values.role === 'client' && values.programPlan !== 'none' ? values.programPlan : null,
       planDuration: values.role === 'client' && values.planDuration !== 'none' ? values.planDuration : null,
     };
 
     createUser.mutate(payload, {
-      onSuccess: () => {
+      onSuccess: (user) => {
         toast.success(`${values.name} was added as a ${values.role}.`);
         onOpenChange(false);
+        // A follow-up save, not part of the same request — the account already exists regardless
+        // of whether this succeeds (see consultationScheduleService.js's own non-blocking
+        // principle applied here too).
+        if (values.role === 'client' && values.setUpSchedule) {
+          saveSchedule.mutate(
+            { client: user._id, ...toApiPayload(values), regenerateFutureCalls: false },
+            { onError: () => toast.error(`${values.name} was added, but the consultation schedule couldn't be saved — set it up from their profile's Settings tab.`) }
+          );
+        }
       },
       onError: (error) => {
         const message = error.response?.status === 409 ? 'That email is already registered.' : "We couldn't add that user — please try again.";
@@ -141,6 +203,48 @@ export function UserFormDialog({ open, onOpenChange }) {
               )}
             />
 
+            <FormField
+              control={form.control}
+              name="phone"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Phone number{role === 'dietitian' && ' *'}</FormLabel>
+                  <FormControl>
+                    <Input type="tel" placeholder="+1 555 123 4567" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="address"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Address{role === 'dietitian' && ' *'}</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Street, city, postcode" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            {role === 'dietitian' && (
+              <FormField
+                control={form.control}
+                name="qualifications"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Credentials / qualifications (optional)</FormLabel>
+                    <FormControl>
+                      <Textarea rows={2} placeholder="e.g. Registered Dietitian, MS in Clinical Nutrition" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
+
             {role === 'client' && (
               <>
                 <FormField
@@ -218,6 +322,23 @@ export function UserFormDialog({ open, onOpenChange }) {
                     </FormItem>
                   )}
                 />
+                <FormField
+                  control={form.control}
+                  name="setUpSchedule"
+                  render={({ field }) => (
+                    <FormItem>
+                      <label className="flex items-center gap-2 text-sm font-medium text-forest">
+                        <input type="checkbox" checked={field.value} onChange={(e) => field.onChange(e.target.checked)} className="size-4" />
+                        Set up a consultation schedule now
+                      </label>
+                    </FormItem>
+                  )}
+                />
+                {setUpSchedule && (
+                  <div className="rounded-lg border border-line p-4">
+                    <ConsultationScheduleFields control={form.control} watch={form.watch} warning={null} />
+                  </div>
+                )}
               </>
             )}
 

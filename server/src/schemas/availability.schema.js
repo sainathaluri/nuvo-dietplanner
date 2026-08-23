@@ -11,9 +11,11 @@ const weeklyHoursDay = z
   .refine((day) => day.startTime < day.endTime, { message: 'endTime must be after startTime', path: ['endTime'] });
 
 // Whole-template replace (see DietitianWeeklyHours.js#replaceWeeklyHours) — a PUT, not a per-day
-// PATCH, so the payload is the full set of open weekdays.
+// PATCH, so the payload is the full set of open weekdays. `dietitian` is only meaningful (and
+// only read) for an admin caller — availability.controller.js#resolveDietitianId ignores it for a
+// dietitian caller, who can only ever mean themselves.
 export const weeklyHoursSchema = z
-  .object({ days: z.array(weeklyHoursDay).max(7) })
+  .object({ days: z.array(weeklyHoursDay).max(7), dietitian: z.string().min(1).optional() })
   .refine((body) => new Set(body.days.map((day) => day.weekday)).size === body.days.length, {
     message: 'Each weekday can appear only once',
     path: ['days'],

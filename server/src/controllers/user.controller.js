@@ -9,6 +9,21 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { ApiError } from '../utils/ApiError.js';
 import { hashPassword } from '../utils/password.js';
 import { toClientShape } from '../utils/serialize.js';
+import { notifyClientAccountCreated } from '../services/accountNotifications.js';
+
+// A blank controlled-form field arrives as '' (see the optionalPhone/optionalAddress union in
+// user.schema.js) — treated as "clear this field," not "set it to the literal empty string."
+function nullifyEmpty(value) {
+  return value === '' ? null : value;
+}
+
+// Shared by createUser/updateUser: throws a 409 if `email` already belongs to a *different* user
+// than `excludeUserId`. A static schema can't see other rows, so this always needs a real query —
+// the DB's own UNIQUE KEY on email is the last-resort backstop if a race slips past this check.
+async function assertEmailAvailable(email, excludeUserId = null) {
+  const existing = await findUserByEmail(email);
+  if (existing && existing.id !== excludeUserId) throw ApiError.conflict('That email is already registered to another account');
+}
 
 export const listUsers = asyncHandler(async (req, res) => {
   const filter = {};
@@ -46,17 +61,42 @@ export const updateMe = asyncHandler(async (req, res) => {
   res.json(toClientShape(user, ['passwordHash']));
 });
 
+// Reachable by admin (full access) or a dietitian editing their own assigned client's contact
+// info only (spec §2026-round2-fixes item 3: "Edit Client, both admin and dietitian portals") —
+// route-level authorize() lets both roles in; ownership + field restriction are enforced here,
+// mirroring call.controller.js#updateCall's isOwningClient allowlist pattern.
 export const updateUser = asyncHandler(async (req, res) => {
-  const { assignedDietitian, role } = req.body;
+  const target = await findUserById(req.params.id);
+  if (!target) throw ApiError.notFound('User not found');
+
+  let patch = { ...req.body };
+
+  if (req.user.role === 'dietitian') {
+    const isOwnClient = target.role === 'client' && String(target.assignedDietitian) === req.user.id;
+    if (!isOwnClient) throw ApiError.forbidden();
+    const allowedKeys = new Set(['email', 'phone']);
+    if (Object.keys(patch).some((key) => !allowedKeys.has(key))) {
+      throw ApiError.forbidden('Dietitians may only edit a client’s email and phone');
+    }
+  }
+
+  const { assignedDietitian, role, email, phone, address } = patch;
   if (assignedDietitian) {
     const dietitian = await findUserById(assignedDietitian);
     if (!dietitian || dietitian.role !== 'dietitian') throw ApiError.badRequest('Invalid dietitian');
   }
+  // Changing email keeps the account fully working: JWTs/sessions key off the immutable user id
+  // (utils/jwt.js signs { sub: user.id }, never email), so no re-login or token invalidation is
+  // needed — the very next login (and every already-issued token) just keeps working, now against
+  // the new address. Only real-world risk is a duplicate, checked here (and backstopped by the
+  // DB's own UNIQUE KEY on email).
+  if (email !== undefined) await assertEmailAvailable(email, target.id);
+  if (phone !== undefined) patch.phone = nullifyEmpty(phone);
+  if (address !== undefined) patch.address = nullifyEmpty(address);
 
   // programPlan/planDuration only ever apply to a client — same conditional-apply convention as
   // assignedDietitian above. Only cleared when this patch explicitly changes the role away from
   // client; otherwise passed through as given (or omitted, leaving them untouched).
-  const patch = { ...req.body };
   if (role !== undefined && role !== 'client') {
     patch.programPlan = null;
     patch.planDuration = null;
@@ -68,8 +108,19 @@ export const updateUser = asyncHandler(async (req, res) => {
 });
 
 export const createUser = asyncHandler(async (req, res) => {
-  const { name, email, password, role, assignedDietitian = null, programPlan = null, planDuration = null } = req.body;
-  if (await findUserByEmail(email)) throw ApiError.conflict('Email already registered');
+  const {
+    name,
+    email,
+    password,
+    role,
+    phone = null,
+    address = null,
+    qualifications = null,
+    assignedDietitian = null,
+    programPlan = null,
+    planDuration = null,
+  } = req.body;
+  await assertEmailAvailable(email);
 
   if (assignedDietitian) {
     const dietitian = await findUserById(assignedDietitian);
@@ -81,6 +132,9 @@ export const createUser = asyncHandler(async (req, res) => {
     email,
     passwordHash: await hashPassword(password),
     role,
+    phone: nullifyEmpty(phone),
+    address: nullifyEmpty(address),
+    qualifications: nullifyEmpty(qualifications),
     assignedDietitian: role === 'client' ? assignedDietitian : null,
     programPlan: role === 'client' ? programPlan : null,
     planDuration: role === 'client' ? planDuration : null,
@@ -88,5 +142,10 @@ export const createUser = asyncHandler(async (req, res) => {
     // password is never the one who'll use it, so force a change on first login.
     mustChangePassword: true,
   });
+
+  // Only a client account created here gets the welcome email — a dietitian/admin account created
+  // through this same endpoint doesn't (trigger is "Client account created", not "any account").
+  if (role === 'client') await notifyClientAccountCreated(user, { plainPassword: password });
+
   res.status(201).json(toClientShape(user, ['passwordHash']));
 });

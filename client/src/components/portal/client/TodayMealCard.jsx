@@ -3,6 +3,7 @@ import { cn } from '@/lib/utils';
 
 export function TodayMealCard({ meal, onMarkEaten, isPending }) {
   const recipe = meal.recipe;
+  const title = recipe?.title ?? meal.customTitle ?? `${meal.mealType} — recipe TBD`;
 
   return (
     <div className="mt-4 flex items-center gap-4 rounded-xl bg-cream p-4">
@@ -13,7 +14,7 @@ export function TodayMealCard({ meal, onMarkEaten, isPending }) {
         <span className="text-xs font-semibold tracking-wide text-sage-deep uppercase">
           {meal.completed ? 'Already logged' : 'Up next'} · {meal.time}
         </span>
-        <h3 className="text-base font-semibold text-forest">{recipe?.title ?? `${meal.mealType} — recipe TBD`}</h3>
+        <h3 className="text-base font-semibold text-forest">{title}</h3>
       </div>
       <button
         type="button"

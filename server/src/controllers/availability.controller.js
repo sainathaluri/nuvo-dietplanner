@@ -1,19 +1,35 @@
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { listWeeklyHours, replaceWeeklyHours } from '../models/DietitianWeeklyHours.js';
 import { listExceptions, createException, deleteExceptionById } from '../models/AvailabilityException.js';
+import { findUserById } from '../models/User.js';
 import { ApiError } from '../utils/ApiError.js';
 import { toClientShape } from '../utils/serialize.js';
 
-// Every handler here is self-service: scoped to req.user.id, no admin-on-behalf-of path (a
-// dietitian manages only their own availability — see docs/API.md).
+// Exceptions (blocks/extra hours) stay dietitian self-service only — unchanged, out of scope for
+// spec §2026-round2-fixes item 2, which only asks for admin-editable *weekly hours*. Weekly hours
+// below now also accept an admin caller acting on behalf of a named dietitian — the whole point
+// being that this reads/writes the exact same model (DietitianWeeklyHours.js, keyed by
+// dietitianId) the booking engine and the dietitian's own self-service screen already use; there
+// is no second copy of "working hours" anywhere.
+async function resolveDietitianId(req) {
+  if (req.user.role !== 'admin') return req.user.id;
+
+  const dietitianId = req.query.dietitian || req.body.dietitian;
+  if (!dietitianId) throw ApiError.badRequest('dietitian is required');
+  const dietitian = await findUserById(dietitianId);
+  if (!dietitian || dietitian.role !== 'dietitian') throw ApiError.badRequest('Invalid dietitian');
+  return dietitianId;
+}
 
 export const getWeeklyHours = asyncHandler(async (req, res) => {
-  const days = await listWeeklyHours(req.user.id);
+  const dietitianId = await resolveDietitianId(req);
+  const days = await listWeeklyHours(dietitianId);
   res.json(days.map((day) => toClientShape(day)));
 });
 
 export const putWeeklyHours = asyncHandler(async (req, res) => {
-  const days = await replaceWeeklyHours(req.user.id, req.body.days);
+  const dietitianId = await resolveDietitianId(req);
+  const days = await replaceWeeklyHours(dietitianId, req.body.days);
   res.json(days.map((day) => toClientShape(day)));
 });
 

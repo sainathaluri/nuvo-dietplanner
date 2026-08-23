@@ -16,10 +16,12 @@ export const createEnquirySchema = z.object({
 // - 'contacted': conversation notes are required.
 // - 'closed' ("Unsuccessful" in the UI): a reason is required.
 // - 'follow-up': books a real call through the availability service, so needs a dietitian + a
-//   slot. Also creates the lead's client account the first time (planId/planDuration/password
-//   required then, checked in the controller since it depends on DB state a static schema can't
-//   see) — if the enquiry was already converted (e.g. via a prior follow-up), these are omitted.
-// - 'converted': creates the same account (no dietitian/call) if one doesn't already exist yet.
+//   slot — booked directly against the enquiry (no client account exists yet; see
+//   docs/specs/2026-round2-fixes.md item 1).
+// - 'converted' ("Successfully Converted / Won" in the UI): the only transition that ever creates
+//   the lead's client account (planId/planDuration/password required then, checked in the
+//   controller since it depends on DB state — has this enquiry already been converted? — a static
+//   schema can't see; omitted on a second Convert click, which is then just a no-op status change).
 export const updateEnquirySchema = z.discriminatedUnion('status', [
   z.object({ status: z.literal('new') }),
   z.object({ status: z.literal('contacted'), note: z.string().min(1, 'Add a note about the conversation') }),
@@ -28,9 +30,6 @@ export const updateEnquirySchema = z.discriminatedUnion('status', [
     status: z.literal('follow-up'),
     dietitian: z.string().min(1),
     scheduledAt: z.coerce.date(),
-    planId: z.string().min(1).optional(),
-    planDuration: z.enum(PLAN_DURATIONS).optional(),
-    password: z.string().min(8).optional(),
     note: z.string().optional(),
   }),
   z.object({

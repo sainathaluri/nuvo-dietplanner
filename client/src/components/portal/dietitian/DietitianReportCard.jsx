@@ -4,11 +4,13 @@ import { FileText, MessageCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { ReportFileViewer } from '@/components/portal/shared/ReportFileViewer';
 import { useAddReportFeedback } from '@/hooks/useReports';
 import { formatDate } from '@/lib/format';
 
 export function DietitianReportCard({ report }) {
   const [message, setMessage] = useState('');
+  const [viewerOpen, setViewerOpen] = useState(false);
   const addFeedback = useAddReportFeedback();
 
   function submit(event) {
@@ -36,7 +38,10 @@ export function DietitianReportCard({ report }) {
           <div>
             <strong className="block text-sm text-forest">{report.client?.name ?? 'Client'}</strong>
             <span className="text-xs text-muted-foreground">
-              {report.fileName} · Uploaded {formatDate(report.createdAt)}
+              <button type="button" onClick={() => setViewerOpen(true)} className="font-semibold text-forest hover:underline">
+                {report.fileName}
+              </button>{' '}
+              · Uploaded {formatDate(report.createdAt)}
             </span>
             {report.note && <p className="mt-1 text-sm text-forest">{report.note}</p>}
           </div>
@@ -75,6 +80,8 @@ export function DietitianReportCard({ report }) {
           {addFeedback.isPending ? 'Sending…' : 'Send'}
         </Button>
       </form>
+
+      <ReportFileViewer report={report} open={viewerOpen} onOpenChange={setViewerOpen} />
     </article>
   );
 }

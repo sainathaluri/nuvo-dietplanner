@@ -8,22 +8,35 @@ import {
 } from '../models/Enquiry.js';
 import { listByEnquiryId, createHistoryEntry } from '../models/EnquiryHistory.js';
 import { findUserByEmail, createUser as createUserRecord } from '../models/User.js';
-import { createCall as createCallRecord } from '../models/Call.js';
+import { reassignEnquiryCallsToClient } from '../models/Call.js';
+import { createClientNote } from '../models/ClientNote.js';
 import { hashPassword } from '../utils/password.js';
 import { withTransaction } from '../db/pool.js';
-import { assertSlotAvailable } from '../services/availabilityGuard.js';
+import { bookCall } from '../services/callService.js';
+import { notifyEnquirySubmitted } from '../services/enquiryNotifications.js';
+import { notifyClientAccountCreated } from '../services/accountNotifications.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { ApiError } from '../utils/ApiError.js';
 import { toClientShape } from '../utils/serialize.js';
 
-// Shared by the 'follow-up' and 'converted' transitions: creates the lead's real client account
-// the first time either one is reached, reusing the exact same create-user path
-// user.controller.js#createUser already uses (hash the temp password, force a change on first
-// login). Returns the existing converted_user_id unchanged if the enquiry already has one — a
-// second Follow-up (or Converted after Follow-up) never creates a duplicate account.
-async function ensureConvertedAccount(enquiry, { planId, planDuration, password, assignedDietitian = null }) {
-  if (enquiry.convertedUserId) return enquiry.convertedUserId;
+// Duplicated from client/src/lib/enquiryStatus.js's STATUS_LABEL — this monorepo has no package
+// shared between client/ and server/ (see similar duplication comments elsewhere, e.g.
+// client/src/lib/availability.js#CALL_DURATION_MINUTES). Only used to prefix a carried-over
+// enquiry_history note (below) with something readable, not shown anywhere else server-side.
+const STATUS_NOTE_LABEL = {
+  new: 'New enquiry',
+  contacted: 'Contacted',
+  'follow-up': 'Follow-up',
+  converted: 'Converted',
+  closed: 'Unsuccessful',
+};
 
+// Only ever called for the 'converted' transition (spec §2026-round2-fixes item 1 — Follow-up must
+// never create an account; only an explicit Converted/Won does). Reuses the exact create-user path
+// user.controller.js#createUser already uses (hash the temp password, force a change on first
+// login). Must run inside the caller's transaction (conn) so account creation and everything that
+// gets carried over onto it either all commit together or none do.
+async function createConvertedAccount(enquiry, { planId, planDuration, password }, conn) {
   if (!password || !planId || !planDuration) {
     throw ApiError.badRequest('password, planId, and planDuration are required to create the client account');
   }
@@ -31,22 +44,24 @@ async function ensureConvertedAccount(enquiry, { planId, planDuration, password,
     throw ApiError.conflict('A user with this email is already registered');
   }
 
-  const user = await createUserRecord({
-    name: enquiry.name,
-    email: enquiry.email,
-    phone: enquiry.phone,
-    passwordHash: await hashPassword(password),
-    role: 'client',
-    assignedDietitian,
-    programPlan: planId,
-    planDuration,
-    mustChangePassword: true,
-  });
-  return user.id;
+  return createUserRecord(
+    {
+      name: enquiry.name,
+      email: enquiry.email,
+      phone: enquiry.phone,
+      passwordHash: await hashPassword(password),
+      role: 'client',
+      programPlan: planId,
+      planDuration,
+      mustChangePassword: true,
+    },
+    conn
+  );
 }
 
 export const createEnquiry = asyncHandler(async (req, res) => {
   const enquiry = await createEnquiryRecord(req.body);
+  await notifyEnquirySubmitted(enquiry);
   res.status(201).json(toClientShape(enquiry));
 });
 
@@ -78,49 +93,78 @@ export const getEnquiry = asyncHandler(async (req, res) => {
 });
 
 // Every transition appends one enquiry_history row (status + note, immutable) — see
-// server/src/schemas/enquiry.schema.js for which statuses require a note and why. 'follow-up' and
-// 'converted' additionally create a client account the first time either is reached (see
-// ensureConvertedAccount above); 'follow-up' also books a real call.
+// server/src/schemas/enquiry.schema.js for which statuses require a note and why.
+//
+// 'follow-up' books a real call directly against the ENQUIRY (no client account exists yet — spec
+// §2026-round2-fixes item 1). 'converted' — the only transition that ever creates an account — then
+// carries that call, and the enquiry's whole history, over onto the new client so they don't start
+// with a blank slate. 'new'/'contacted'/'closed' are plain status/note transitions with no side
+// effects, same as before.
 export const updateEnquiry = asyncHandler(async (req, res) => {
   const existing = await findEnquiryById(req.params.id);
   if (!existing) throw ApiError.notFound('Enquiry not found');
 
-  const { status, note, planId, planDuration, password } = req.body;
-  let callId = null;
-  let convertedUserId = existing.convertedUserId;
-
-  if (status === 'follow-up' || status === 'converted') {
-    const alreadyConverted = Boolean(convertedUserId);
-    convertedUserId = await ensureConvertedAccount(existing, {
-      planId,
-      planDuration,
-      password,
-      assignedDietitian: status === 'follow-up' ? req.body.dietitian : null,
-    });
-    // Persisted immediately, before the call-booking step below (which can still fail with a
-    // 409). Otherwise a newly-created account would be orphaned on failure: the enquiry would
-    // never learn its id, so a retry could neither reuse it (unknown id) nor create a fresh one
-    // (the email's already taken) — permanently stuck.
-    if (!alreadyConverted) await updateEnquiryById(req.params.id, { convertedUserId });
-  }
+  const { status, note } = req.body;
 
   if (status === 'follow-up') {
     const { dietitian, scheduledAt } = req.body;
-    // Reuses the exact same transaction + availability-check + call-creation path
-    // call.controller.js#createCall's non-force branch already uses — a 409 from
-    // assertSlotAvailable bubbles up unchanged if the slot's no longer free.
-    const call = await withTransaction(async (conn) => {
-      await assertSlotAvailable({ dietitianId: dietitian, scheduledAt }, conn);
-      return createCallRecord({ client: convertedUserId, dietitian, scheduledAt, notes: note }, conn);
+    // Goes through the exact same service call.controller.js#createCall uses (availability check,
+    // transaction, AND the booking-email notification to both the dietitian and the enquiry's own
+    // contact email) — this used to call the model directly, silently skipping the booking email
+    // for every Follow-up call. `enquiry`, not `client`: no account exists to attach this call to
+    // yet.
+    const call = await bookCall({ enquiry: existing.id, dietitian, scheduledAt, notes: note });
+    await createHistoryEntry({ enquiryId: existing.id, status, note: note ?? null, callId: call.id });
+    const enquiry = await updateEnquiryById(req.params.id, { status, note });
+    return res.json(toClientShape(enquiry));
+  }
+
+  if (status === 'converted') {
+    const { planId, planDuration, password } = req.body;
+    const alreadyConverted = Boolean(existing.convertedUserId);
+    // Captured from inside the transaction, but only ever notified about after it commits (below)
+    // — never from inside the transaction body itself, so a conversion that ends up rolling back
+    // (e.g. the note-copying loop throws) can never have already queued a welcome email for an
+    // account that doesn't actually exist.
+    let newUser = null;
+
+    // One transaction for the whole conversion: account creation, re-pointing any enquiry-linked
+    // calls onto it, copying the enquiry's history into client notes, and the status/history update
+    // itself either all happen together or (on any failure) none do — no partial "account exists
+    // but its history didn't carry over" state to ever get stuck in or need to detect on retry.
+    const enquiry = await withTransaction(async (conn) => {
+      let convertedUserId = existing.convertedUserId;
+
+      if (!alreadyConverted) {
+        const user = await createConvertedAccount(existing, { planId, planDuration, password }, conn);
+        convertedUserId = user.id;
+        newUser = user;
+
+        await reassignEnquiryCallsToClient(existing.id, convertedUserId, conn);
+
+        const history = await listByEnquiryId(existing.id, conn);
+        for (const entry of history) {
+          const label = STATUS_NOTE_LABEL[entry.status] ?? entry.status;
+          await createClientNote(
+            { client: convertedUserId, author: req.user.id, body: entry.note ? `[${label}] ${entry.note}` : `[${label}]` },
+            conn
+          );
+        }
+      }
+
+      await createHistoryEntry({ enquiryId: existing.id, status, note: note ?? null }, conn);
+      return updateEnquiryById(req.params.id, { status, note, convertedUserId }, conn);
     });
-    callId = call.id;
+
+    if (newUser) await notifyClientAccountCreated(newUser, { plainPassword: password });
+
+    return res.json(toClientShape(enquiry));
   }
 
   if (status !== 'new') {
-    await createHistoryEntry({ enquiryId: existing.id, status, note: note ?? null, callId });
+    await createHistoryEntry({ enquiryId: existing.id, status, note: note ?? null });
   }
-
-  const enquiry = await updateEnquiryById(req.params.id, { status, note, convertedUserId });
+  const enquiry = await updateEnquiryById(req.params.id, { status, note });
   res.json(toClientShape(enquiry));
 });
 

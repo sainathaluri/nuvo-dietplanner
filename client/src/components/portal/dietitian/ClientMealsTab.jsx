@@ -58,7 +58,9 @@ export function ClientMealsTab({ clientId }) {
                 <td className="py-2 pr-4 font-medium whitespace-nowrap text-forest">{formatDate(meal.date)}</td>
                 <td className="py-2 pr-4">{meal.mealType}</td>
                 <td className="py-2 pr-4 whitespace-nowrap text-muted-foreground">{meal.time}</td>
-                <td className="py-2 pr-4">{meal.recipe ? `${meal.recipe.emoji ?? ''} ${meal.recipe.title}`.trim() : '—'}</td>
+                <td className="py-2 pr-4">
+                  {meal.recipe ? `${meal.recipe.emoji ?? ''} ${meal.recipe.title}`.trim() : (meal.customTitle ?? '—')}
+                </td>
                 <td className="py-2 pr-4 text-muted-foreground">{meal.notes || '—'}</td>
               </tr>
             ))}

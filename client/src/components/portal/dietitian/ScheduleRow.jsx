@@ -2,12 +2,12 @@ import { X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { WEEKDAYS } from '@/lib/clientPortal';
+import { MEAL_SLOT_TYPES } from '@/lib/mealSlotTypes';
 import { MealDropzone } from './MealDropzone';
-
-const MEAL_TYPES = ['Breakfast', 'Lunch', 'Snack', 'Dinner'];
 
 export function ScheduleRow({ meal, recipes, onChange, onRemove }) {
   const recipe = recipes.find((r) => r._id === meal.recipeId) ?? null;
+  const isCustom = meal.mealType === 'Custom';
 
   return (
     <div className="rounded-xl border border-line/60 p-2">
@@ -32,7 +32,7 @@ export function ScheduleRow({ meal, recipes, onChange, onRemove }) {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {MEAL_TYPES.map((type) => (
+            {MEAL_SLOT_TYPES.map((type) => (
               <SelectItem key={type} value={type}>
                 {type}
               </SelectItem>
@@ -40,12 +40,21 @@ export function ScheduleRow({ meal, recipes, onChange, onRemove }) {
           </SelectContent>
         </Select>
 
-        <MealDropzone
-          id={`row-${meal.localId}`}
-          recipe={recipe}
-          recipes={recipes}
-          onAssign={(recipeId) => onChange({ recipeId })}
-        />
+        {isCustom ? (
+          <Input
+            aria-label="Custom recipe name"
+            value={meal.customTitle ?? ''}
+            onChange={(e) => onChange({ customTitle: e.target.value })}
+            placeholder="Type the recipe/food name"
+          />
+        ) : (
+          <MealDropzone
+            id={`row-${meal.localId}`}
+            recipe={recipe}
+            recipes={recipes}
+            onAssign={(recipeId) => onChange({ recipeId })}
+          />
+        )}
 
         <button
           type="button"
@@ -56,6 +65,16 @@ export function ScheduleRow({ meal, recipes, onChange, onRemove }) {
           <X className="size-4" aria-hidden="true" />
         </button>
       </div>
+
+      {isCustom && (
+        <Input
+          aria-label="Custom meal type name"
+          value={meal.customMealType ?? ''}
+          onChange={(e) => onChange({ customMealType: e.target.value })}
+          placeholder="Name this meal type (e.g. Pre-workout snack)"
+          className="mt-2"
+        />
+      )}
 
       <Input
         aria-label="Meal notes"

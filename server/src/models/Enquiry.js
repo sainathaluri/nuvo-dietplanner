@@ -56,20 +56,23 @@ export async function countEnquiries(filter = {}) {
   return Number(rows[0].count);
 }
 
-export async function findEnquiryById(id) {
-  const [rows] = await pool.query('SELECT * FROM enquiries WHERE id = ? LIMIT 1', [id]);
+export async function findEnquiryById(id, conn = pool) {
+  const [rows] = await conn.query('SELECT * FROM enquiries WHERE id = ? LIMIT 1', [id]);
   return mapEnquiry(rows[0]);
 }
 
-export async function updateEnquiryById(id, patch) {
+// conn: pass the caller's own transaction connection when the update is part of a larger atomic
+// operation (e.g. enquiry.controller.js's Converted transition) — see User.js#createUser's own
+// conn comment for why reading back needs the same connection.
+export async function updateEnquiryById(id, patch, conn = pool) {
   const { sets, params } = buildSetClause(
     { status: 'status', note: 'note', convertedUserId: 'converted_user_id' },
     patch
   );
   if (sets.length) {
-    await pool.query(`UPDATE enquiries SET ${sets.join(', ')} WHERE id = ?`, [...params, id]);
+    await conn.query(`UPDATE enquiries SET ${sets.join(', ')} WHERE id = ?`, [...params, id]);
   }
-  return findEnquiryById(id);
+  return findEnquiryById(id, conn);
 }
 
 export async function deleteEnquiryById(id) {

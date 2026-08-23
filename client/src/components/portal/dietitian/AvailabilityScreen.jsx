@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { TimezoneField } from './TimezoneField';
 import { WeeklyHoursForm } from './WeeklyHoursForm';
 import { AvailabilityExceptionList } from './AvailabilityExceptionList';
 import { AvailabilityExceptionFormDialog } from './AvailabilityExceptionFormDialog';
@@ -10,7 +11,10 @@ export function AvailabilityScreen() {
     <div className="grid gap-8">
       <section>
         <h2 className="mb-3 text-lg text-forest">Weekly hours</h2>
-        <WeeklyHoursForm />
+        <TimezoneField />
+        <div className="mt-4">
+          <WeeklyHoursForm />
+        </div>
       </section>
 
       <section>

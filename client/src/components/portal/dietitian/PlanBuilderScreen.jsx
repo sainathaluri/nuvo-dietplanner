@@ -293,7 +293,9 @@ export function PlanBuilderScreen() {
               <div className="flex items-center justify-between py-4">
                 <div>
                   <h2 className="text-xl">Meal schedule</h2>
-                  <p className="text-xs text-muted-foreground">Drag a recipe onto any meal slot, or choose one from the dropdown.</p>
+                  <p className="text-xs text-muted-foreground">
+                    Drag a recipe onto any meal slot, choose one from the dropdown, or set the meal type to Custom to type your own.
+                  </p>
                 </div>
                 <button type="button" onClick={addMeal} className="text-sm font-semibold text-forest hover:underline">
                   + Add meal

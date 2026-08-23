@@ -1,16 +1,27 @@
+import { useState } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useCurrentPlan } from '@/hooks/usePlans';
 import { formatDate } from '@/lib/format';
+import { ClientContactEditDialog } from './ClientContactEditDialog';
 
 // Spec §6 item 1: client information, plan, and plan duration — plus a quick pointer at the
-// current weekly meal plan (full history of those lives in the Meal plans tab).
+// current weekly meal plan (full history of those lives in the Meal plans tab). Spec
+// §2026-round2-fixes item 3: email/phone are editable here too — the same allowlisted
+// {email, phone}-only path an admin's edit dialog uses, restricted server-side to a client
+// actually assigned to the calling dietitian (see user.controller.js#updateUser).
 export function ClientOverviewTab({ client }) {
   const planQuery = useCurrentPlan(client._id);
+  const [editingContact, setEditingContact] = useState(false);
 
   return (
     <div className="grid gap-5 min-[700px]:grid-cols-2">
       <section className="rounded-card bg-white p-6 shadow-soft">
-        <h2 className="text-xl">Client information</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl">Client information</h2>
+          <button type="button" onClick={() => setEditingContact(true)} className="text-sm font-semibold text-forest hover:underline">
+            Edit
+          </button>
+        </div>
         <dl className="mt-4 grid gap-3 text-sm">
           <div className="flex justify-between gap-4">
             <dt className="text-muted-foreground">Email</dt>
@@ -51,6 +62,8 @@ export function ClientOverviewTab({ client }) {
           <p className="mt-4 text-sm text-muted-foreground">No weekly plan assigned yet.</p>
         )}
       </section>
+
+      <ClientContactEditDialog open={editingContact} onOpenChange={setEditingContact} client={client} />
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/portal/shared/EmptyState';
 import { useAvailableSlots } from '@/hooks/useCalls';
 import { formatTime } from '@/lib/format';
+import { browserTimezone, timezoneOffsetLabel } from '@/lib/timezone';
 
 export function todayDateValue() {
   const d = new Date();
@@ -33,22 +34,37 @@ export function SlotPicker({ dietitianId, excludeCallId, date, onDateChange, val
         </div>
       ) : isError ? (
         <p className="text-sm text-destructive">Couldn't load available times — please try again.</p>
+      ) : !dietitianId ? (
+        // useAvailableSlots' query is disabled (enabled: Boolean(dietitianId && date)) whenever
+        // dietitianId is missing — `data` then stays undefined forever, `isLoading`/`isError` both
+        // stay false, and `data.slots` below would throw. A caller can end up here (e.g. a call
+        // whose dietitian somehow can't be resolved) — surface it instead of crashing the dialog
+        // silently, which is exactly the "dead button" failure mode this was auditing for.
+        <p className="text-sm text-destructive">Couldn't determine who this call is with — please try again.</p>
       ) : data.slots.length === 0 ? (
         <EmptyState title="No available times" description="Try a different date." />
       ) : (
-        <div className="flex flex-wrap gap-2">
-          {data.slots.map((slot) => (
-            <Button
-              key={slot}
-              type="button"
-              size="sm"
-              variant={slot === value ? 'default' : 'outline'}
-              onClick={() => onChange(slot)}
-            >
-              {formatTime(slot)}
-            </Button>
-          ))}
-        </div>
+        <>
+          <div className="flex flex-wrap gap-2">
+            {data.slots.map((slot) => (
+              <Button
+                key={slot}
+                type="button"
+                size="sm"
+                variant={slot === value ? 'default' : 'outline'}
+                onClick={() => onChange(slot)}
+              >
+                {formatTime(slot)}
+              </Button>
+            ))}
+          </div>
+          {/* Each slot is a real UTC instant converted to the viewer's own browser timezone at this
+              one display point (formatTime above) — labelled here so it's never ambiguous which
+              timezone "9:00 AM" means, especially when the dietitian is in a different one. */}
+          <p className="text-xs text-muted-foreground">
+            Times shown in your timezone ({browserTimezone()}, {timezoneOffsetLabel()})
+          </p>
+        </>
       )}
     </div>
   );

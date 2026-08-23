@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useDietitians } from '@/hooks/useClients';
@@ -12,8 +13,14 @@ import { useProgramPlans } from '@/hooks/useProgramPlans';
 import { useUpdateUser } from '@/hooks/useUsers';
 import { PLAN_DURATIONS } from '@/lib/planDurations';
 
+// Spec §2026-round2-fixes item 3: editable email/phone here too (admin's generic edit dialog —
+// dietitians get their own richer page, see DietitianProfileScreen.jsx). Email format only; the
+// server is the source of truth for uniqueness (a duplicate can't be checked client-side without
+// exposing the full user directory) — its 409 surfaces on the field via onError below.
 const schema = z.object({
   role: z.enum(['client', 'dietitian', 'admin']),
+  email: z.string().email('Enter a valid email'),
+  phone: z.string().regex(/^[+\d][\d\s\-().]{6,19}$/, 'Enter a valid phone number').or(z.literal('')),
   assignedDietitian: z.string().optional(),
   programPlan: z.string().optional(),
   planDuration: z.string().optional(),
@@ -22,6 +29,8 @@ const schema = z.object({
 function toFormValues(user) {
   return {
     role: user.role,
+    email: user.email,
+    phone: user.phone ?? '',
     assignedDietitian: user.assignedDietitian ?? 'none',
     programPlan: user.programPlan?._id ?? user.programPlan ?? 'none',
     planDuration: user.planDuration ?? 'none',
@@ -49,6 +58,8 @@ export function UserEditDialog({ open, onOpenChange, user }) {
       {
         userId: user._id,
         role: values.role,
+        email: values.email,
+        phone: values.phone,
         assignedDietitian: values.role === 'client' && values.assignedDietitian !== 'none' ? values.assignedDietitian : null,
         programPlan: values.role === 'client' && values.programPlan !== 'none' ? values.programPlan : null,
         planDuration: values.role === 'client' && values.planDuration !== 'none' ? values.planDuration : null,
@@ -58,7 +69,13 @@ export function UserEditDialog({ open, onOpenChange, user }) {
           toast.success(`${user.name}'s account was updated.`);
           onOpenChange(false);
         },
-        onError: () => toast.error("We couldn't save that — please try again."),
+        onError: (error) => {
+          if (error.response?.status === 409) {
+            form.setError('email', { message: 'That email is already registered to another account' });
+            return;
+          }
+          toast.error("We couldn't save that — please try again.");
+        },
       }
     );
   }
@@ -91,6 +108,32 @@ export function UserEditDialog({ open, onOpenChange, user }) {
                       <SelectItem value="admin">Admin</SelectItem>
                     </SelectContent>
                   </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="email"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Email address</FormLabel>
+                  <FormControl>
+                    <Input type="email" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="phone"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Phone number</FormLabel>
+                  <FormControl>
+                    <Input type="tel" placeholder="+1 555 123 4567" {...field} />
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )}

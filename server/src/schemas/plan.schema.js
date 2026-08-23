@@ -1,12 +1,23 @@
 import { z } from 'zod';
 
-const mealSlot = z.object({
-  day: z.string().min(1),
-  time: z.string().min(1),
-  mealType: z.enum(['Breakfast', 'Lunch', 'Snack', 'Dinner']),
-  recipe: z.string().nullable().optional(),
-  notes: z.string().nullable().optional(),
-});
+// mealType (spec §2026-round2-fixes item 4): free text, not the old fixed 4-value enum — the
+// builder's dropdown still offers exactly those 4 plus a client-only 'Custom' sentinel that never
+// itself reaches here, same convention as recipe.schema.js's own mealType. recipe/customTitle are
+// mutually exclusive (a slot references a catalog recipe OR a manually typed one, or neither) —
+// mirrored at the DB level by plan_meals' own CHECK constraint, not just here.
+const mealSlot = z
+  .object({
+    day: z.string().min(1),
+    time: z.string().min(1),
+    mealType: z.string().min(1).max(50),
+    recipe: z.string().nullable().optional(),
+    customTitle: z.string().max(255).nullable().optional(),
+    notes: z.string().nullable().optional(),
+  })
+  .refine((data) => !(data.recipe && data.customTitle), {
+    message: 'A meal slot can reference a catalog recipe or a custom recipe name, not both',
+    path: ['customTitle'],
+  });
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 

@@ -3,6 +3,7 @@ import { cn } from '@/lib/utils';
 
 export function MealCard({ meal, onToggleEaten, onToggleSwap, isPending }) {
   const recipe = meal.recipe;
+  const title = recipe?.title ?? meal.customTitle ?? `${meal.mealType} — recipe TBD`;
 
   return (
     <article className="flex items-center gap-4 rounded-card bg-white p-4 shadow-soft">
@@ -14,7 +15,7 @@ export function MealCard({ meal, onToggleEaten, onToggleSwap, isPending }) {
       </div>
       <div className="flex-1">
         <span className="text-xs text-muted-foreground">{meal.time}</span>
-        <h3 className="text-sm font-semibold text-forest">{recipe?.title ?? `${meal.mealType} — recipe TBD`}</h3>
+        <h3 className="text-sm font-semibold text-forest">{title}</h3>
         {recipe?.tags?.length > 0 && (
           <p className="mt-0.5 text-xs text-muted-foreground">{recipe.tags.join(' · ')}</p>
         )}

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { UserPlus, Users } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -7,6 +8,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/portal/shared/EmptyState';
 import { useUsers } from '@/hooks/useUsers';
 import { useDietitians } from '@/hooks/useClients';
+import { ACCOUNT_STATUS_LABEL, ACCOUNT_STATUS_BADGE_VARIANT } from '@/lib/accountStatus';
 import { UserFormDialog } from './UserFormDialog';
 import { UserEditDialog } from './UserEditDialog';
 
@@ -24,12 +26,20 @@ export function UsersScreen() {
   const [search, setSearch] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState(null);
+  const navigate = useNavigate();
 
   const { data, isLoading, isError, refetch } = useUsers(roleFilter === 'all' ? undefined : { role: roleFilter });
   const { data: dietitians } = useDietitians();
 
   const visible = (data ?? []).filter((u) => u.name.toLowerCase().includes(search.toLowerCase()));
   const dietitianName = (id) => dietitians?.find((d) => d._id === id)?.name;
+
+  // Dietitians get their own richer page (spec §2026-round2-fixes item 2 — personal/contact
+  // details, credentials, working hours, account status); client/admin edits stay in the dialog.
+  function openEdit(user) {
+    if (user.role === 'dietitian') navigate(`/app/users/dietitians/${user._id}`);
+    else setEditing(user);
+  }
 
   return (
     <div className="mx-auto max-w-4xl p-9">
@@ -98,6 +108,11 @@ export function UsersScreen() {
                   <Badge variant={ROLE_TONE[u.role]} className="capitalize">
                     {u.role}
                   </Badge>
+                  {u.role === 'dietitian' && u.accountStatus && u.accountStatus !== 'active' && (
+                    <Badge variant={ACCOUNT_STATUS_BADGE_VARIANT[u.accountStatus]} className="capitalize">
+                      {ACCOUNT_STATUS_LABEL[u.accountStatus]}
+                    </Badge>
+                  )}
                 </div>
                 <span className="text-xs text-muted-foreground">
                   {u.email}
@@ -108,7 +123,7 @@ export function UsersScreen() {
               </div>
               <button
                 type="button"
-                onClick={() => setEditing(u)}
+                onClick={() => openEdit(u)}
                 className="shrink-0 text-sm font-semibold text-forest hover:underline"
               >
                 Edit

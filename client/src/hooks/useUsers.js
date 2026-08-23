@@ -30,3 +30,10 @@ export function useSelectDietitian() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
   });
 }
+
+// Dietitian-only: sets the IANA zone their weekly hours/exceptions are interpreted in (spec
+// §2026-round2-fixes item 7). Callers should also feed the returned user into
+// useAuth().updateUser so AuthContext stays in sync without a reload.
+export function useUpdateTimezone() {
+  return useMutation({ mutationFn: (timezone) => updateMeRequest({ timezone }) });
+}

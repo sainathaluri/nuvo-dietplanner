@@ -27,11 +27,13 @@ const ReportsPage = lazyNamed(() => import('@/pages/app/ReportsPage'), 'ReportsP
 const ClientsPage = lazyNamed(() => import('@/pages/app/ClientsPage'), 'ClientsPage');
 const ClientProfilePage = lazyNamed(() => import('@/pages/app/ClientProfilePage'), 'ClientProfilePage');
 const UsersPage = lazyNamed(() => import('@/pages/app/UsersPage'), 'UsersPage');
+const DietitianProfilePage = lazyNamed(() => import('@/pages/app/DietitianProfilePage'), 'DietitianProfilePage');
 const PlanPage = lazyNamed(() => import('@/pages/app/PlanPage'), 'PlanPage');
 const PlansPage = lazyNamed(() => import('@/pages/app/PlansPage'), 'PlansPage');
 const RecipesPage = lazyNamed(() => import('@/pages/app/RecipesPage'), 'RecipesPage');
 const EnquiriesPage = lazyNamed(() => import('@/pages/app/EnquiriesPage'), 'EnquiriesPage');
 const InsightsPage = lazyNamed(() => import('@/pages/app/InsightsPage'), 'InsightsPage');
+const EmailLogPage = lazyNamed(() => import('@/pages/app/EmailLogPage'), 'EmailLogPage');
 
 // Wraps a single /app/<path> route in the RoleRoute guard for the roles that route belongs to
 // (sourced from ROUTE_ROLES, which is derived from the nav config — never hand-duplicated).
@@ -73,11 +75,18 @@ export const router = createBrowserRouter([
               // same roles as the clients list itself — see ROUTE_ROLES in portalNav.js.
               { element: <RoleRoute roles={ROUTE_ROLES.clients} />, children: [{ path: 'clients/:id', element: <ClientProfilePage /> }] },
               guarded('users', <UsersPage />),
+              // Not a nav entry (reached by clicking a dietitian row in Manage users) but guarded
+              // by the same roles as that list itself — see ROUTE_ROLES in portalNav.js.
+              {
+                element: <RoleRoute roles={ROUTE_ROLES.users} />,
+                children: [{ path: 'users/dietitians/:id', element: <DietitianProfilePage /> }],
+              },
               guarded('plan', <PlanPage />),
               guarded('plans', <PlansPage />),
               guarded('recipes', <RecipesPage />),
               guarded('enquiries', <EnquiriesPage />),
               guarded('insights', <InsightsPage />),
+              guarded('email-log', <EmailLogPage />),
             ],
           },
         ],

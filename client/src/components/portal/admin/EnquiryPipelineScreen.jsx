@@ -18,9 +18,10 @@ const COLUMNS = Object.keys(STATUS_LABEL).map((status) => ({ status, label: STAT
 // Statuses that need to collect something (a note, a reason, a schedule) before the transition can
 // go through open a dialog instead of firing immediately. 'new' has nothing to collect, so it
 // stays an immediate move — matching the existing drag/dropdown behavior for that one status.
-// 'converted' is special-cased in requestStatusChange below: it only opens a dialog when the
-// enquiry doesn't already have a client account (from an earlier Follow-up) — otherwise it's just
-// a label change, same as 'new'.
+// 'converted' — the only status that ever creates a client account (spec §2026-round2-fixes item
+// 1) — is special-cased in requestStatusChange below: it only opens a dialog the first time (to
+// collect plan/duration/password); re-selecting it on an already-converted enquiry is just a label
+// change, same as 'new'.
 const DIALOG_FOR_STATUS = {
   contacted: EnquiryContactedDialog,
   closed: EnquiryClosedDialog,

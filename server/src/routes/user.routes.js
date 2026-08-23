@@ -12,5 +12,7 @@ userRouter.use(authenticate, blockIfMustChangePassword);
 userRouter.get('/', authorize('admin', 'dietitian', 'client'), listUsers);
 userRouter.get('/:id', getUser);
 userRouter.patch('/me', validate(updateMeSchema), updateMe);
-userRouter.patch('/:id', authorize('admin'), validate(updateUserSchema), updateUser);
+// dietitian: only their own assigned client's email/phone (enforced in the controller, since it
+// depends on which user is being targeted — a static route guard can't see that).
+userRouter.patch('/:id', authorize('admin', 'dietitian'), validate(updateUserSchema), updateUser);
 userRouter.post('/', authorize('admin'), validate(createUserSchema), createUser);

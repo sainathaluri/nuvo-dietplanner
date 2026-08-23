@@ -26,6 +26,7 @@ function mapMeal(row, recipe) {
     time: row.time,
     mealType: row.meal_type,
     recipe,
+    customTitle: row.custom_title,
     completed: !!row.completed,
     swapRequested: !!row.swap_requested,
     notes: row.notes,
@@ -129,14 +130,15 @@ async function insertMeals(conn, planId, meals) {
       meal.time,
       meal.mealType,
       meal.recipe ?? null,
+      meal.customTitle ?? null,
       meal.completed ?? false,
       meal.swapRequested ?? false,
       meal.notes ?? null
     );
   });
-  const placeholders = meals.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?)').join(', ');
+  const placeholders = meals.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').join(', ');
   await conn.query(
-    `INSERT INTO plan_meals (plan_id, idx, day, time, meal_type, recipe_id, completed, swap_requested, notes) VALUES ${placeholders}`,
+    `INSERT INTO plan_meals (plan_id, idx, day, time, meal_type, recipe_id, custom_title, completed, swap_requested, notes) VALUES ${placeholders}`,
     values
   );
 }

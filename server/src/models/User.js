@@ -12,11 +12,15 @@ function mapUser(row) {
     passwordHash: row.password_hash,
     role: row.role,
     phone: row.phone,
+    address: row.address,
+    qualifications: row.qualifications,
+    accountStatus: row.account_status,
     assignedDietitian: row.assigned_dietitian_id,
     refreshTokenVersion: row.refresh_token_version,
     mustChangePassword: !!row.must_change_password,
     programPlan: row.program_plan_id,
     planDuration: row.plan_duration,
+    timezone: row.timezone,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -34,28 +38,38 @@ export async function findUserByEmail(email) {
   return mapUser(rows[0]);
 }
 
-export async function findUserById(id) {
-  const [rows] = await pool.query(`${SELECT_WITH_PROGRAM_PLAN} WHERE u.id = ? LIMIT 1`, [id]);
+// conn defaults to the pool but accepts a transaction connection (see
+// availabilityGuard.js#getDietitianTimezone) so a caller already inside a transaction reads a
+// consistent snapshot instead of opening a second, unrelated pool connection.
+export async function findUserById(id, conn = pool) {
+  const [rows] = await conn.query(`${SELECT_WITH_PROGRAM_PLAN} WHERE u.id = ? LIMIT 1`, [id]);
   return mapUser(rows[0]);
 }
 
-export async function createUser({
-  name,
-  email,
-  passwordHash,
-  role,
-  phone = null,
-  assignedDietitian = null,
-  mustChangePassword = false,
-  programPlan = null,
-  planDuration = null,
-}) {
+export async function createUser(
+  {
+    name,
+    email,
+    passwordHash,
+    role,
+    phone = null,
+    address = null,
+    qualifications = null,
+    assignedDietitian = null,
+    mustChangePassword = false,
+    programPlan = null,
+    planDuration = null,
+  },
+  conn = pool
+) {
   const id = newId();
-  await pool.query(
-    'INSERT INTO users (id, name, email, password_hash, role, phone, assigned_dietitian_id, must_change_password, program_plan_id, plan_duration) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    [id, name, email, passwordHash, role, phone, assignedDietitian, mustChangePassword, programPlan, planDuration]
+  await conn.query(
+    `INSERT INTO users
+      (id, name, email, password_hash, role, phone, address, qualifications, assigned_dietitian_id, must_change_password, program_plan_id, plan_duration)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, name, email, passwordHash, role, phone, address, qualifications, assignedDietitian, mustChangePassword, programPlan, planDuration]
   );
-  return findUserById(id);
+  return findUserById(id, conn);
 }
 
 // filter: { role?, assignedDietitian? }
@@ -75,15 +89,21 @@ export async function listUsers(filter = {}) {
   return rows.map(mapUser);
 }
 
-// patch may include: name, phone, role, assignedDietitian, programPlan, planDuration
+// patch may include: name, email, phone, address, qualifications, accountStatus, role,
+// assignedDietitian, programPlan, planDuration, timezone
 export async function updateUser(id, patch) {
   const columns = {
     name: 'name',
+    email: 'email',
     phone: 'phone',
+    address: 'address',
+    qualifications: 'qualifications',
+    accountStatus: 'account_status',
     role: 'role',
     assignedDietitian: 'assigned_dietitian_id',
     programPlan: 'program_plan_id',
     planDuration: 'plan_duration',
+    timezone: 'timezone',
   };
   const sets = [];
   const params = [];

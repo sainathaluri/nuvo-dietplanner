@@ -1,8 +1,12 @@
+import { useState } from 'react';
 import { FileText, MessageCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { ReportFileViewer } from '@/components/portal/shared/ReportFileViewer';
 import { formatDate } from '@/lib/format';
 
 export function ReportCard({ report }) {
+  const [viewerOpen, setViewerOpen] = useState(false);
+
   return (
     <article className="rounded-card bg-white p-5 shadow-soft">
       <div className="flex items-start justify-between gap-3">
@@ -11,7 +15,9 @@ export function ReportCard({ report }) {
             <FileText className="size-5" aria-hidden="true" />
           </div>
           <div>
-            <strong className="block text-sm text-forest">{report.fileName}</strong>
+            <button type="button" onClick={() => setViewerOpen(true)} className="block text-sm font-semibold text-forest hover:underline">
+              {report.fileName}
+            </button>
             <span className="text-xs text-muted-foreground">Uploaded {formatDate(report.createdAt)}</span>
             {report.note && <p className="mt-1 text-sm text-forest">{report.note}</p>}
           </div>
@@ -41,6 +47,8 @@ export function ReportCard({ report }) {
           </div>
         )}
       </div>
+
+      <ReportFileViewer report={report} open={viewerOpen} onOpenChange={setViewerOpen} />
     </article>
   );
 }

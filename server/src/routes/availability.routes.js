@@ -13,11 +13,13 @@ import {
 import { weeklyHoursSchema, createExceptionSchema } from '../schemas/availability.schema.js';
 
 export const availabilityRouter = Router();
-// Dietitian self-service only — no admin-on-behalf-of path (see docs/API.md).
-availabilityRouter.use(authenticate, blockIfMustChangePassword, authorize('dietitian'));
+availabilityRouter.use(authenticate, blockIfMustChangePassword, authorize('dietitian', 'admin'));
 
+// Weekly hours: dietitian self-service, or admin on behalf of a named dietitian (?dietitian=/body
+// `dietitian` — see availability.controller.js#resolveDietitianId; spec §2026-round2-fixes item
+// 2). Exceptions stay dietitian-only (authorize() re-narrowed per-route below) — unchanged.
 availabilityRouter.get('/weekly-hours', getWeeklyHours);
 availabilityRouter.put('/weekly-hours', validate(weeklyHoursSchema), putWeeklyHours);
-availabilityRouter.get('/exceptions', listAvailabilityExceptions);
-availabilityRouter.post('/exceptions', validate(createExceptionSchema), createAvailabilityException);
-availabilityRouter.delete('/exceptions/:id', deleteAvailabilityException);
+availabilityRouter.get('/exceptions', authorize('dietitian'), listAvailabilityExceptions);
+availabilityRouter.post('/exceptions', authorize('dietitian'), validate(createExceptionSchema), createAvailabilityException);
+availabilityRouter.delete('/exceptions/:id', authorize('dietitian'), deleteAvailabilityException);

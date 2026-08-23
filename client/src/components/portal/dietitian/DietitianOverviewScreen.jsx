@@ -64,20 +64,26 @@ export function DietitianOverviewScreen() {
                 </div>
               ) : (
                 <div className="mt-4 grid gap-2">
-                  {data.todaysAppointments.map((call) => (
+                  {data.todaysAppointments.map((call) => {
+                    // A follow-up call booked directly against an enquiry (spec
+                    // §2026-round2-fixes item 1) has no client yet — fall back to the enquiry's
+                    // name rather than a generic "Client" placeholder.
+                    const person = call.client ?? call.enquiry;
+                    return (
                     <div key={call._id} className="flex items-center gap-3 rounded-xl bg-cream p-3">
                       <div className="grid size-9 shrink-0 place-items-center rounded-full bg-sage font-semibold text-forest">
-                        {call.client?.name?.[0] ?? 'C'}
+                        {person?.name?.[0] ?? 'C'}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <strong className="block text-sm text-forest">{call.client?.name ?? 'Client'}</strong>
+                        <strong className="block text-sm text-forest">{person?.name ?? 'Client'}</strong>
                         <span className="text-xs text-muted-foreground">{formatTime(call.scheduledAt)}</span>
                       </div>
                       <Badge variant={STATUS_VARIANT[call.status]} className="capitalize">
                         {call.status}
                       </Badge>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </section>

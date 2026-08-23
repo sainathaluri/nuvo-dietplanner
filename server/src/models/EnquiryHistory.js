@@ -13,8 +13,8 @@ function mapHistoryEntry(row) {
   };
 }
 
-export async function listByEnquiryId(enquiryId) {
-  const [rows] = await pool.query(
+export async function listByEnquiryId(enquiryId, conn = pool) {
+  const [rows] = await conn.query(
     'SELECT * FROM enquiry_history WHERE enquiry_id = ? ORDER BY created_at ASC',
     [enquiryId]
   );

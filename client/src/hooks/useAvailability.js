@@ -7,14 +7,20 @@ import {
   deleteAvailabilityExceptionRequest,
 } from '../api/availability.api';
 
-export function useWeeklyHours() {
-  return useQuery({ queryKey: ['availability', 'weekly-hours'], queryFn: getWeeklyHoursRequest });
+// dietitianId: omit for "my own hours" (dietitian self-service); pass it when an admin is editing
+// a named dietitian's hours (spec §2026-round2-fixes item 2) — same convention as useCalls/
+// useProgress's own clientId param.
+export function useWeeklyHours(dietitianId) {
+  return useQuery({
+    queryKey: ['availability', 'weekly-hours', dietitianId ?? 'mine'],
+    queryFn: () => getWeeklyHoursRequest(dietitianId),
+  });
 }
 
-export function useSaveWeeklyHours() {
+export function useSaveWeeklyHours(dietitianId) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: saveWeeklyHoursRequest,
+    mutationFn: (days) => saveWeeklyHoursRequest(days, dietitianId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['availability', 'weekly-hours'] }),
   });
 }

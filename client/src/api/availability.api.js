@@ -1,9 +1,13 @@
 import { axiosClient } from './axiosClient';
 
-export const getWeeklyHoursRequest = () => axiosClient.get('/availability/weekly-hours').then((r) => r.data);
+// dietitianId: omit for "my own hours" (dietitian self-service); pass it when an admin is editing
+// a named dietitian's hours (spec §2026-round2-fixes item 2) — the server ignores it for a
+// dietitian caller, who can only ever mean themselves.
+export const getWeeklyHoursRequest = (dietitianId) =>
+  axiosClient.get('/availability/weekly-hours', { params: dietitianId ? { dietitian: dietitianId } : undefined }).then((r) => r.data);
 
-export const saveWeeklyHoursRequest = (days) =>
-  axiosClient.put('/availability/weekly-hours', { days }).then((r) => r.data);
+export const saveWeeklyHoursRequest = (days, dietitianId) =>
+  axiosClient.put('/availability/weekly-hours', { days, dietitian: dietitianId }).then((r) => r.data);
 
 export const listAvailabilityExceptionsRequest = () => axiosClient.get('/availability/exceptions').then((r) => r.data);
 

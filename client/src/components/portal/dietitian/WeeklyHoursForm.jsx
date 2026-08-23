@@ -33,9 +33,13 @@ function toInputTime(value) {
   return value ? value.slice(0, 5) : '';
 }
 
-export function WeeklyHoursForm() {
-  const { data, isLoading } = useWeeklyHours();
-  const saveWeeklyHours = useSaveWeeklyHours();
+// dietitianId: omit for "my own hours" (dietitian self-service, e.g. AvailabilityScreen.jsx); pass
+// it when an admin is editing a named dietitian's hours (DietitianProfileScreen.jsx) — this is the
+// one component either context renders, writing to the same dietitian_weekly_hours model either
+// way (spec §2026-round2-fixes item 2: "not a second copy").
+export function WeeklyHoursForm({ dietitianId } = {}) {
+  const { data, isLoading } = useWeeklyHours(dietitianId);
+  const saveWeeklyHours = useSaveWeeklyHours(dietitianId);
 
   const form = useForm({ resolver: zodResolver(formSchema), defaultValues: { rows: emptyRows() } });
 

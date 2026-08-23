@@ -97,7 +97,14 @@ export function CallFormDialog({ open, onOpenChange, mode, call }) {
                   <FormLabel>Date &amp; time</FormLabel>
                   <FormControl>
                     <SlotPicker
-                      dietitianId={user.assignedDietitian}
+                      // Rescheduling must check the availability of the dietitian this call is
+                      // actually *with* — not the client's current assignedDietitian, which can
+                      // drift from it after a reassignment (an existing call's own dietitian never
+                      // changes when a client is later moved to someone else). Booking a brand-new
+                      // call has no existing dietitian to defer to, so it correctly falls back to
+                      // the client's current assignment (matching createCall's own server-side
+                      // derivation in call.controller.js).
+                      dietitianId={isReschedule ? (call?.dietitian?._id ?? call?.dietitian) : user.assignedDietitian}
                       excludeCallId={isReschedule ? call?._id : undefined}
                       date={date}
                       onDateChange={setDate}

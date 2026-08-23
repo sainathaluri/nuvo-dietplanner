@@ -40,6 +40,13 @@ export const login = asyncHandler(async (req, res) => {
   if (!user || !(await comparePassword(password, user.passwordHash))) {
     throw ApiError.unauthorized('Invalid email or password');
   }
+  // 'suspended' blocks login outright; 'inactive' does not (see the account_status comment in
+  // schema.sql — a dietitian temporarily not taking new work can still manage existing clients).
+  // Checked here (not just in authenticate.js) so a suspended account can't even get a first
+  // token, not only lose access on their next request.
+  if (user.accountStatus === 'suspended') {
+    throw ApiError.forbidden('This account has been suspended. Contact an administrator.');
+  }
   const accessToken = issueTokens(res, user);
   res.json({ user: toClientShape(user, ['passwordHash']), accessToken });
 });
