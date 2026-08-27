@@ -6,6 +6,7 @@ import {
 import { findUserById } from '../models/User.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { ApiError } from '../utils/ApiError.js';
+import { assertUserInCompany } from '../utils/scope.js';
 import { toClientShape } from '../utils/serialize.js';
 import { getAvailableSlotsForDay } from '../services/availabilityGuard.js';
 import { bookCall, applyCallUpdate } from '../services/callService.js';
@@ -17,7 +18,7 @@ function scopeToOwner(req, filter = {}) {
 }
 
 export const listCalls = asyncHandler(async (req, res) => {
-  const filter = scopeToOwner(req);
+  const filter = scopeToOwner(req, { companyId: req.user.companyId });
   // Narrows further to one client. Safe even for a dietitian passing an unrelated client id —
   // `filter.dietitian` from scopeToOwner is still ANDed in, so it can only ever return zero rows,
   // never someone else's calls.
@@ -44,6 +45,7 @@ export const getAvailableSlots = asyncHandler(async (req, res) => {
     dietitianId = req.user.id;
   } else {
     if (!req.query.dietitian) throw ApiError.badRequest('dietitian is required');
+    await assertUserInCompany(req, req.query.dietitian);
     dietitianId = req.query.dietitian;
   }
 
@@ -68,8 +70,11 @@ export const createCall = asyncHandler(async (req, res) => {
   } else if (req.user.role === 'dietitian') {
     if (!client) throw ApiError.badRequest('client is required');
     dietitian = req.user.id;
-  } else if (!client || !dietitian) {
-    throw ApiError.badRequest('client and dietitian are required');
+  } else {
+    if (!client || !dietitian) throw ApiError.badRequest('client and dietitian are required');
+    // Admin picking an arbitrary client/dietitian pair — same cross-org guard as plan.controller.js#createPlan.
+    await assertUserInCompany(req, client);
+    await assertUserInCompany(req, dietitian);
   }
 
   // Clients can never force — see the `force` comment in call.schema.js.
@@ -86,6 +91,7 @@ export const createCall = asyncHandler(async (req, res) => {
 export const updateCall = asyncHandler(async (req, res) => {
   const call = await findCallById(req.params.id);
   if (!call) throw ApiError.notFound('Call not found');
+  await assertUserInCompany(req, call.dietitian?._id ?? call.dietitian);
 
   const isOwningClient = req.user.role === 'client' && String(call.client) === req.user.id;
   const isOwningDietitian = req.user.role === 'dietitian' && String(call.dietitian?._id ?? call.dietitian) === req.user.id;
@@ -115,7 +121,9 @@ export const updateCall = asyncHandler(async (req, res) => {
 });
 
 export const deleteCall = asyncHandler(async (req, res) => {
-  const call = await deleteCallById(req.params.id);
-  if (!call) throw ApiError.notFound('Call not found');
+  const existing = await findCallById(req.params.id);
+  if (!existing) throw ApiError.notFound('Call not found');
+  await assertUserInCompany(req, existing.dietitian?._id ?? existing.dietitian);
+  await deleteCallById(req.params.id);
   res.status(204).send();
 });

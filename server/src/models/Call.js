@@ -46,10 +46,13 @@ function mapCall(row) {
   return call;
 }
 
-// filter: { client?, dietitian?, from?, to?, consultationScheduleId?, status? }
+// filter: { companyId, client?, dietitian?, from?, to?, consultationScheduleId?, status? } —
+// companyId required, scoped via the owning dietitian's own company (dietitian_id is always
+// NOT NULL — see schema.sql), same transitive-scoping design used throughout.
 export async function listCalls(filter = {}) {
-  const where = [];
-  const params = [];
+  if (!filter.companyId) throw new Error('listCalls: companyId is required');
+  const where = ['du.company_id = ?'];
+  const params = [filter.companyId];
   if (filter.client) {
     where.push('c.client_id = ?');
     params.push(filter.client);
@@ -204,27 +207,33 @@ export async function deleteCallById(id) {
   return existing;
 }
 
+// filter: { companyId, dietitian?, status?, from?, to? } — companyId required (no direct
+// company_id column on calls; scoped by joining the owning dietitian's own company, same
+// transitive-scoping design as the rest of this table's tenant isolation).
 export async function countCalls(filter = {}) {
-  const where = [];
-  const params = [];
+  if (!filter.companyId) throw new Error('countCalls: companyId is required');
+  const where = ['du.company_id = ?'];
+  const params = [filter.companyId];
   if (filter.dietitian) {
-    where.push('dietitian_id = ?');
+    where.push('c.dietitian_id = ?');
     params.push(filter.dietitian);
   }
   if (filter.status) {
-    where.push('status = ?');
+    where.push('c.status = ?');
     params.push(filter.status);
   }
   if (filter.from) {
-    where.push('scheduled_at >= ?');
+    where.push('c.scheduled_at >= ?');
     params.push(filter.from);
   }
   if (filter.to) {
-    where.push('scheduled_at <= ?');
+    where.push('c.scheduled_at <= ?');
     params.push(filter.to);
   }
-  const whereSql = where.length ? ` WHERE ${where.join(' AND ')}` : '';
-  const [rows] = await pool.query(`SELECT COUNT(*) AS count FROM calls${whereSql}`, params);
+  const [rows] = await pool.query(
+    `SELECT COUNT(*) AS count FROM calls c JOIN users du ON du.id = c.dietitian_id WHERE ${where.join(' AND ')}`,
+    params
+  );
   return Number(rows[0].count);
 }
 

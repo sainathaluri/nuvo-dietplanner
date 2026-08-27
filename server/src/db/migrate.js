@@ -82,13 +82,14 @@ const ALTERS = [
   "ALTER TABLE users ADD COLUMN account_status ENUM('active', 'inactive', 'suspended') NOT NULL DEFAULT 'active' AFTER qualifications",
   // Custom meal types/recipes in the weekly plan builder (spec §2026-round2-fixes item 4): relax
   // the fixed 4-value ENUM to free text (same MODIFY-is-a-no-op-when-already-applied reasoning as
-  // recipes.meal_type above), add custom_title for a manually typed recipe name, and enforce the
-  // two are mutually exclusive at the DB level too. Order matters: the CHECK must come after
-  // custom_title exists, and every existing row already satisfies it (recipe_id set or NULL,
-  // custom_title always NULL until now).
+  // recipes.meal_type above) and add custom_title for a manually typed recipe name. The two being
+  // mutually exclusive is enforced by the trigger pair schema.sql creates right after plan_meals —
+  // not a CHECK constraint (MySQL errno 3823: a CHECK can't reference a column that carries an FK
+  // with a SET NULL/CASCADE/SET DEFAULT action, and fk_plan_meals_recipe is ON DELETE SET NULL) —
+  // and schema.sql runs unconditionally on every migrate() call, so no ALTER backfill is needed
+  // here for the trigger itself.
   'ALTER TABLE plan_meals MODIFY COLUMN meal_type VARCHAR(50) NOT NULL',
   'ALTER TABLE plan_meals ADD COLUMN custom_title VARCHAR(255) NULL AFTER recipe_id',
-  'ALTER TABLE plan_meals ADD CONSTRAINT chk_plan_meals_recipe_or_custom CHECK (recipe_id IS NULL OR custom_title IS NULL)',
   // .ics SEQUENCE for the booking/reschedule/cancellation calendar invite (server/src/emails/ics.js)
   // — see the comment on this column in schema.sql.
   'ALTER TABLE calls ADD COLUMN ics_sequence INT NOT NULL DEFAULT 0 AFTER reminder_minutes_before',
@@ -99,7 +100,50 @@ const ALTERS = [
   'ALTER TABLE calls ADD COLUMN consultation_schedule_id VARCHAR(36) NULL AFTER ics_sequence',
   'ALTER TABLE calls ADD KEY idx_calls_consultation_schedule (consultation_schedule_id)',
   'ALTER TABLE calls ADD CONSTRAINT fk_calls_consultation_schedule FOREIGN KEY (consultation_schedule_id) REFERENCES consultation_schedules(id) ON DELETE SET NULL',
+  // ZenX SSO handoff (auth.controller.js#handoff): links a user to admin-server's zenx_users.id —
+  // see the comment on this column in schema.sql.
+  'ALTER TABLE users ADD COLUMN zenx_user_id VARCHAR(36) NULL AFTER timezone',
+  'ALTER TABLE users ADD UNIQUE KEY uq_users_zenx_user (zenx_user_id)',
+  // Multi-tenancy (2026-08-27): see the company_id comments on users/enquiries/program_plans in
+  // schema.sql. Added NULL here (fresh installs declare NOT NULL) and immediately backfilled onto
+  // env.legacyCompanyId — every pre-existing row belongs to that one real, ZenX-managed company
+  // (admin-server's seedLegacyCompany), never left unscoped. Fails fast (not silently skipped) if
+  // that env var is unset and there's actually data to backfill, since a silent skip here would
+  // leave every existing row permanently invisible once the app-level company filtering below ships.
+  'ALTER TABLE users ADD COLUMN company_id VARCHAR(36) NULL AFTER zenx_user_id',
+  'ALTER TABLE users ADD COLUMN company_slug VARCHAR(255) NULL AFTER company_id',
+  'ALTER TABLE users ADD KEY idx_users_company (company_id)',
+  'ALTER TABLE enquiries ADD COLUMN company_id VARCHAR(36) NULL AFTER id',
+  'ALTER TABLE enquiries ADD KEY idx_enquiries_company (company_id)',
+  'ALTER TABLE program_plans ADD COLUMN company_id VARCHAR(36) NULL AFTER id',
+  'ALTER TABLE program_plans ADD KEY idx_program_plans_company (company_id)',
 ];
+
+// Run after ALTERS so the columns above are guaranteed to exist first. Each is a no-op once every
+// row already has a company_id (the `WHERE company_id IS NULL` guard), so re-running migrate.js
+// stays idempotent like everything else here.
+async function backfillLegacyCompany(conn) {
+  const [[{ pending }]] = await conn.query(
+    `SELECT
+       (SELECT COUNT(*) FROM users WHERE company_id IS NULL) +
+       (SELECT COUNT(*) FROM enquiries WHERE company_id IS NULL) +
+       (SELECT COUNT(*) FROM program_plans WHERE company_id IS NULL) AS pending`
+  );
+  if (Number(pending) === 0) return;
+
+  if (!env.legacyCompanyId) {
+    throw new Error(
+      `[migrate] ${pending} row(s) need a company_id backfilled but LEGACY_COMPANY_ID is not set. ` +
+        'Run admin-server\'s seed (creates/prints the Legacy Practice company id), set LEGACY_COMPANY_ID ' +
+        'in wellness-app/server/.env, then re-run db:migrate.'
+    );
+  }
+
+  await conn.query('UPDATE users SET company_id = ? WHERE company_id IS NULL', [env.legacyCompanyId]);
+  await conn.query('UPDATE enquiries SET company_id = ? WHERE company_id IS NULL', [env.legacyCompanyId]);
+  await conn.query('UPDATE program_plans SET company_id = ? WHERE company_id IS NULL', [env.legacyCompanyId]);
+  console.log(`[migrate] backfilled ${pending} row(s) onto company_id = ${env.legacyCompanyId}`);
+}
 
 async function migrate() {
   const sql = readFileSync(schemaPath, 'utf8');
@@ -130,6 +174,8 @@ async function migrate() {
       }
     }
   }
+
+  await backfillLegacyCompany(conn);
 
   await conn.end();
 }

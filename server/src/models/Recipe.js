@@ -48,20 +48,25 @@ export async function tagsByRecipeIds(recipeIds) {
   return map;
 }
 
-// filter: { mealType?, search? }
+// filter: { companyId, mealType?, search? } — companyId required (no direct company_id column on
+// recipes; scoped via the creating user's own company, same transitive-scoping design used
+// throughout).
 export async function listRecipes(filter = {}) {
-  const where = [];
-  const params = [];
+  if (!filter.companyId) throw new Error('listRecipes: companyId is required');
+  const where = ['u.company_id = ?'];
+  const params = [filter.companyId];
   if (filter.mealType) {
-    where.push('meal_type = ?');
+    where.push('r.meal_type = ?');
     params.push(filter.mealType);
   }
   if (filter.search) {
-    where.push('title LIKE ?');
+    where.push('r.title LIKE ?');
     params.push(`%${filter.search}%`);
   }
-  const whereSql = where.length ? ` WHERE ${where.join(' AND ')}` : '';
-  const [rows] = await pool.query(`SELECT * FROM recipes${whereSql} ORDER BY created_at DESC`, params);
+  const [rows] = await pool.query(
+    `SELECT r.* FROM recipes r JOIN users u ON u.id = r.created_by WHERE ${where.join(' AND ')} ORDER BY r.created_at DESC`,
+    params
+  );
   const tagsByRecipe = await tagsByRecipeIds(rows.map((r) => r.id));
   return rows.map((row) => mapRecipeRow(row, tagsByRecipe.get(row.id) ?? []));
 }

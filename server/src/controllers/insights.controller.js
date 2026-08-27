@@ -31,23 +31,25 @@ function startOfWeek(date) {
 }
 
 export const adminOverview = asyncHandler(async (req, res) => {
+  const companyId = req.user.companyId;
   const [newEnquiries, converted, totalEnquiries, activeClients, dietitians, statusCounts] = await Promise.all([
-    countEnquiries({ status: 'new' }),
-    countEnquiries({ status: 'converted' }),
-    countEnquiries(),
-    countUsers({ role: 'client' }),
-    listUsers({ role: 'dietitian' }),
-    countEnquiriesByStatus(),
+    countEnquiries({ companyId, status: 'new' }),
+    countEnquiries({ companyId, status: 'converted' }),
+    countEnquiries({ companyId }),
+    countUsers({ companyId, role: 'client' }),
+    listUsers({ companyId, role: 'dietitian' }),
+    countEnquiriesByStatus(companyId),
   ]);
 
   const followUpsToday = await countCalls({
+    companyId,
     status: 'scheduled',
     from: startOfDay(),
     to: endOfDay(),
   });
 
   const clientsByDietitian = new Map(
-    (await countUsersGroupedByDietitian()).map((row) => [row.dietitianId, row.clients])
+    (await countUsersGroupedByDietitian(companyId)).map((row) => [row.dietitianId, row.clients])
   );
   const dietitianWorkload = dietitians.map((d) => ({
     dietitian: d.name,
@@ -57,7 +59,7 @@ export const adminOverview = asyncHandler(async (req, res) => {
   // Real weekly enquiry volume for the last GROWTH_WEEKS weeks (including weeks with zero
   // enquiries, so the chart's x-axis is a continuous timeline, not just weeks that had activity).
   const earliestWeek = startOfWeek(new Date(Date.now() - (GROWTH_WEEKS - 1) * 7 * 24 * 60 * 60 * 1000));
-  const createdAtRows = await listEnquiryCreatedAtSince(earliestWeek);
+  const createdAtRows = await listEnquiryCreatedAtSince(companyId, earliestWeek);
   const countByWeek = new Map();
   for (const createdAt of createdAtRows) {
     const key = startOfWeek(createdAt).toISOString().slice(0, 10);

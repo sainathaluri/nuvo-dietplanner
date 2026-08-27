@@ -7,7 +7,7 @@ import {
 } from '../models/ClientNote.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { ApiError } from '../utils/ApiError.js';
-import { assertDietitianOwnsClient } from '../utils/scope.js';
+import { assertDietitianOwnsClient, assertUserInCompany } from '../utils/scope.js';
 import { toClientShape } from '../utils/serialize.js';
 
 export const listClientNotes = asyncHandler(async (req, res) => {
@@ -30,6 +30,7 @@ export const createClientNote = asyncHandler(async (req, res) => {
 export const updateClientNote = asyncHandler(async (req, res) => {
   const note = await findClientNoteById(req.params.id);
   if (!note) throw ApiError.notFound('Note not found');
+  await assertUserInCompany(req, note.client);
   if (req.user.role !== 'admin' && String(note.author) !== req.user.id) throw ApiError.forbidden();
 
   const updated = await updateClientNoteById(req.params.id, req.body);
@@ -39,6 +40,7 @@ export const updateClientNote = asyncHandler(async (req, res) => {
 export const deleteClientNote = asyncHandler(async (req, res) => {
   const note = await findClientNoteById(req.params.id);
   if (!note) throw ApiError.notFound('Note not found');
+  await assertUserInCompany(req, note.client);
   if (req.user.role !== 'admin' && String(note.author) !== req.user.id) throw ApiError.forbidden();
 
   await deleteClientNoteById(req.params.id);

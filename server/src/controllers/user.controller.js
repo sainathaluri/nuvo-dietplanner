@@ -26,10 +26,10 @@ async function assertEmailAvailable(email, excludeUserId = null) {
 }
 
 export const listUsers = asyncHandler(async (req, res) => {
-  const filter = {};
+  const filter = { companyId: req.user.companyId };
   if (req.query.role) filter.role = req.query.role;
   if (req.user.role === 'dietitian') filter.assignedDietitian = req.user.id;
-  else if (req.user.role === 'client') filter.role = 'dietitian'; // clients may only browse the dietitian directory
+  else if (req.user.role === 'client') filter.role = 'dietitian'; // clients may only browse their own org's dietitian directory
   else if (req.query.assignedDietitian) filter.assignedDietitian = req.query.assignedDietitian;
 
   const users = await queryUsers(filter);
@@ -38,7 +38,9 @@ export const listUsers = asyncHandler(async (req, res) => {
 
 export const getUser = asyncHandler(async (req, res) => {
   const user = await findUserById(req.params.id);
-  if (!user) throw ApiError.notFound('User not found');
+  // Wrong-company is a 404, not 403 — same "don't reveal existence" reasoning as
+  // enquiry.controller.js's assertOwnEnquiry.
+  if (!user || user.companyId !== req.user.companyId) throw ApiError.notFound('User not found');
 
   const isSelf = user.id === req.user.id;
   const isOwningDietitian = req.user.role === 'dietitian' && String(user.assignedDietitian) === req.user.id;
@@ -53,7 +55,9 @@ export const updateMe = asyncHandler(async (req, res) => {
     if (req.user.role !== 'client') throw ApiError.forbidden('Only clients can choose a dietitian');
     if (assignedDietitian !== null) {
       const dietitian = await findUserById(assignedDietitian);
-      if (!dietitian || dietitian.role !== 'dietitian') throw ApiError.badRequest('Invalid dietitian');
+      if (!dietitian || dietitian.role !== 'dietitian' || dietitian.companyId !== req.user.companyId) {
+        throw ApiError.badRequest('Invalid dietitian');
+      }
     }
   }
 
@@ -67,7 +71,7 @@ export const updateMe = asyncHandler(async (req, res) => {
 // mirroring call.controller.js#updateCall's isOwningClient allowlist pattern.
 export const updateUser = asyncHandler(async (req, res) => {
   const target = await findUserById(req.params.id);
-  if (!target) throw ApiError.notFound('User not found');
+  if (!target || target.companyId !== req.user.companyId) throw ApiError.notFound('User not found');
 
   let patch = { ...req.body };
 
@@ -83,7 +87,9 @@ export const updateUser = asyncHandler(async (req, res) => {
   const { assignedDietitian, role, email, phone, address } = patch;
   if (assignedDietitian) {
     const dietitian = await findUserById(assignedDietitian);
-    if (!dietitian || dietitian.role !== 'dietitian') throw ApiError.badRequest('Invalid dietitian');
+    if (!dietitian || dietitian.role !== 'dietitian' || dietitian.companyId !== req.user.companyId) {
+      throw ApiError.badRequest('Invalid dietitian');
+    }
   }
   // Changing email keeps the account fully working: JWTs/sessions key off the immutable user id
   // (utils/jwt.js signs { sub: user.id }, never email), so no re-login or token invalidation is
@@ -124,7 +130,9 @@ export const createUser = asyncHandler(async (req, res) => {
 
   if (assignedDietitian) {
     const dietitian = await findUserById(assignedDietitian);
-    if (!dietitian || dietitian.role !== 'dietitian') throw ApiError.badRequest('Invalid dietitian');
+    if (!dietitian || dietitian.role !== 'dietitian' || dietitian.companyId !== req.user.companyId) {
+      throw ApiError.badRequest('Invalid dietitian');
+    }
   }
 
   const user = await createUserRecord({
@@ -141,6 +149,12 @@ export const createUser = asyncHandler(async (req, res) => {
     // Every account is admin-created now (self-registration is gone) — the person who set this
     // password is never the one who'll use it, so force a change on first login.
     mustChangePassword: true,
+    // Always the creating org admin's own company — never client-supplied — so a sub-user can
+    // only ever be created inside the org that created them (the "Wellness admins manage their
+    // own users" requirement). This route is admin-only (see user.routes.js authorize()), so
+    // req.user.companyId is always a real org admin's company, never a ZenX platform admin's.
+    companyId: req.user.companyId,
+    companySlug: req.user.companySlug,
   });
 
   // Only a client account created here gets the welcome email — a dietitian/admin account created

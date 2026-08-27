@@ -1,4 +1,14 @@
-import { findUserByEmail, findUserById, setPassword, bumpRefreshTokenVersion } from '../models/User.js';
+import jwt from 'jsonwebtoken';
+import {
+  findUserByEmail,
+  findUserById,
+  findUserByZenxId,
+  createUser,
+  linkZenxUser,
+  setPassword,
+  bumpRefreshTokenVersion,
+} from '../models/User.js';
+import { upsertCompanyFromHandoff } from '../models/Company.js';
 import {
   createPasswordResetToken,
   findValidPasswordResetToken,
@@ -47,6 +57,67 @@ export const login = asyncHandler(async (req, res) => {
   if (user.accountStatus === 'suspended') {
     throw ApiError.forbidden('This account has been suspended. Contact an administrator.');
   }
+  const accessToken = issueTokens(res, user);
+  res.json({ user: toClientShape(user, ['passwordHash']), accessToken });
+});
+
+// Verifies the short-lived SSO token admin-server's issueHandoffToken signs (see the claim-shape
+// comment on that function — sub/email/contact_name/role/company_id/company_slug/company_name/
+// logo_url/jti — this reads exactly those, byte-for-byte). Public endpoint: the token itself, not
+// a session, proves the caller came from a real ZenX login.
+export const handoff = asyncHandler(async (req, res) => {
+  const { token } = req.body;
+  if (!env.zenxHandoffSecret) throw new Error('ZENX_HANDOFF_SECRET is not configured');
+
+  let payload;
+  try {
+    payload = jwt.verify(token, env.zenxHandoffSecret);
+  } catch {
+    throw ApiError.unauthorized('This login link is invalid or has expired.');
+  }
+
+  // users.company_id has a FK into this app's own companies table — mirror the ZenX company here
+  // first so a brand-new (never-before-seen) company can SSO in without a pre-seeded local row.
+  await upsertCompanyFromHandoff({
+    id: payload.company_id,
+    name: payload.company_name,
+    slug: payload.company_slug,
+    logoUrl: payload.logo_url,
+  });
+
+  let user = await findUserByZenxId(payload.sub);
+  if (!user) {
+    user = await findUserByEmail(payload.email);
+    if (user) {
+      // A pre-existing account (e.g. a legacy-company user created before this identity ever SSO'd
+      // in) gets linked to its ZenX identity — company_id is deliberately NOT overwritten here: it
+      // already has one (every user row does, post-multi-tenancy), and a ZenX-side company change
+      // must not silently move an existing local account into a different org.
+      user = await linkZenxUser(user.id, payload.sub);
+    } else {
+      // First time this ZenX identity has reached wellness-app. ZenX's per-application `role`
+      // claim (provisioning.controller.js#defaultRoleFor) maps to this app's local role enum:
+      // 'wellness_admin' becomes this org's Wellness `admin` (can create/manage their own
+      // dietitians/clients — see user.controller.js#createUser's companyId stamping); anything
+      // else falls back to 'dietitian', the prior hardcoded behavior, for forward-compat with any
+      // other per-application role ZenX might introduce later. Never 'client' — clients are
+      // created inside this app by a dietitian/admin, not via SSO.
+      user = await createUser({
+        name: payload.contact_name || payload.email,
+        email: payload.email,
+        passwordHash: await hashPassword(crypto.randomBytes(32).toString('hex')),
+        role: payload.role === 'wellness_admin' ? 'admin' : 'dietitian',
+        zenxUserId: payload.sub,
+        companyId: payload.company_id,
+        companySlug: payload.company_slug ?? null,
+      });
+    }
+  }
+
+  if (user.accountStatus === 'suspended') {
+    throw ApiError.forbidden('This account has been suspended. Contact an administrator.');
+  }
+
   const accessToken = issueTokens(res, user);
   res.json({ user: toClientShape(user, ['passwordHash']), accessToken });
 });

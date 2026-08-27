@@ -8,7 +8,7 @@ import {
 } from '../models/Plan.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { ApiError } from '../utils/ApiError.js';
-import { assertDietitianOwnsClient } from '../utils/scope.js';
+import { assertDietitianOwnsClient, assertUserInCompany } from '../utils/scope.js';
 import { toClientShape } from '../utils/serialize.js';
 import { notifyPlanPublished } from '../services/planNotifications.js';
 
@@ -19,7 +19,7 @@ function scopeToOwner(req, filter = {}) {
 }
 
 export const listPlans = asyncHandler(async (req, res) => {
-  const filter = scopeToOwner(req);
+  const filter = scopeToOwner(req, { companyId: req.user.companyId });
   if (req.query.client && req.user.role !== 'client') filter.client = req.query.client;
   if (req.query.week) filter.week = new Date(req.query.week);
   const plans = await queryPlans(filter);
@@ -29,6 +29,8 @@ export const listPlans = asyncHandler(async (req, res) => {
 export const getPlan = asyncHandler(async (req, res) => {
   const plan = await findPlanById(req.params.id);
   if (!plan) throw ApiError.notFound('Plan not found');
+  // Admin is org-scoped, not platform-scoped — re-check company before the role bypass below.
+  await assertUserInCompany(req, plan.dietitian);
 
   const owns =
     req.user.role === 'admin' ||
@@ -47,6 +49,12 @@ export const createPlan = asyncHandler(async (req, res) => {
     // never submit an arbitrary `dietitian` field or a client they aren't assigned to.
     dietitian = req.user.id;
     await assertDietitianOwnsClient(req, client);
+  } else {
+    // Admin picking an arbitrary client/dietitian pair: both must be real accounts inside the
+    // admin's own org — never trusted from the request body otherwise (a cross-org pairing would
+    // leak one org's plan into another's dietitian workload/client view).
+    await assertUserInCompany(req, client);
+    await assertUserInCompany(req, dietitian);
   }
 
   const plan = await createPlanRecord({ client, dietitian, ...rest });
@@ -60,6 +68,7 @@ export const createPlan = asyncHandler(async (req, res) => {
 export const updatePlan = asyncHandler(async (req, res) => {
   const existing = await findPlanById(req.params.id);
   if (!existing) throw ApiError.notFound('Plan not found');
+  await assertUserInCompany(req, existing.dietitian);
   if (req.user.role === 'dietitian' && String(existing.dietitian) !== req.user.id) throw ApiError.forbidden();
 
   // A genuine publish (false/undefined → true) — not every autosave, and not a repeat "publish" of
@@ -75,6 +84,7 @@ export const updatePlan = asyncHandler(async (req, res) => {
 export const deletePlan = asyncHandler(async (req, res) => {
   const existing = await findPlanById(req.params.id);
   if (!existing) throw ApiError.notFound('Plan not found');
+  await assertUserInCompany(req, existing.dietitian);
   if (req.user.role === 'dietitian' && String(existing.dietitian) !== req.user.id) throw ApiError.forbidden();
 
   await deletePlanById(req.params.id);

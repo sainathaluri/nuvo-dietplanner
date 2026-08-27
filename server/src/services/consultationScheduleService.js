@@ -189,8 +189,8 @@ export async function generateForSchedule({ schedule, client, dietitian, now = n
 // action on one occurrence must keep blocking that date forever, exactly per the "must not be
 // undone by the next generation run" requirement; only a whole-series regenerate frees the dates
 // back up.
-export async function cancelFutureGeneratedCalls(scheduleId) {
-  const calls = await listCalls({ consultationScheduleId: scheduleId, status: 'scheduled', from: new Date() });
+export async function cancelFutureGeneratedCalls(scheduleId, companyId) {
+  const calls = await listCalls({ companyId, consultationScheduleId: scheduleId, status: 'scheduled', from: new Date() });
   const cancelled = [];
   for (const call of calls) {
     cancelled.push(await applyCallUpdate(call.id, call, { status: 'cancelled', consultationScheduleId: null }));
@@ -244,7 +244,7 @@ export async function saveConsultationSchedule({
   let cancelled = [];
 
   if (isFirstSave || regenerateFutureCalls) {
-    cancelled = await cancelFutureGeneratedCalls(schedule.id);
+    cancelled = await cancelFutureGeneratedCalls(schedule.id, client.companyId);
     if (active) {
       ({ createdCalls: generated, newGaps: gaps } = await generateForSchedule({ schedule, client, dietitian }));
     }

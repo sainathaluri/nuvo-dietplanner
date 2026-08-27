@@ -22,3 +22,23 @@ services:
         value: 30d
       - key: CLIENT_ORIGIN
         sync: false
+      # Notification engine (server/src/emails/) — added 2026-08-23/24. RESEND_API_KEY is required
+      # in production: server.js now fails loudly at boot (before accepting any traffic) if it's
+      # missing, via assertEmailTransportConfigured() — this MUST already be set on the live
+      # service before deploying this build, or the API will fail to start entirely.
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        value: "Nourishly <onboarding@resend.dev>"
+      - key: PASSWORD_RESET_TOKEN_TTL_MINUTES
+        value: "60"
+      - key: EMAIL_QUEUE_POLL_INTERVAL_MS
+        value: "5000"
+      - key: EMAIL_QUEUE_BATCH_SIZE
+        value: "10"
+      - key: EMAIL_MAX_ATTEMPTS
+        value: "5"
+      # Consultation schedule rolling-window generator (server/src/services/consultationScheduleJob.js)
+      # — added 2026-08-24.
+      - key: CONSULTATION_SCHEDULE_JOB_INTERVAL_MS
+        value: "86400000"

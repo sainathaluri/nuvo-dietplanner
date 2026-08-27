@@ -9,7 +9,7 @@ import {
 import { listClientIdsByDietitian } from '../models/User.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { ApiError } from '../utils/ApiError.js';
-import { assertDietitianOwnsClient } from '../utils/scope.js';
+import { assertDietitianOwnsClient, assertUserInCompany } from '../utils/scope.js';
 import { toClientShape } from '../utils/serialize.js';
 import { uploadsDir } from '../middleware/upload.js';
 
@@ -21,16 +21,19 @@ function contentDispositionHeader(fileName) {
 }
 
 export const listReports = asyncHandler(async (req, res) => {
-  const filter = {};
+  const filter = { companyId: req.user.companyId };
   if (req.user.role === 'client') {
     filter.client = req.user.id;
   } else if (req.query.client) {
+    // Company-checks the client too — see assertDietitianOwnsClient's own comment.
     await assertDietitianOwnsClient(req, req.query.client);
     filter.client = req.query.client;
   } else if (req.user.role === 'dietitian') {
-    // No ?client= given: default to "my clients' reports", not every report on the platform.
+    // No ?client= given: default to "my clients' reports", not every report in the org.
     filter.clientIn = await listClientIdsByDietitian(req.user.id);
   }
+  // role === 'admin' with no ?client=: filter stays companyId-only — every report in their org,
+  // not the whole platform.
 
   const reports = await queryReports(filter);
   res.json(reports.map((r) => toClientShape(r)));
@@ -53,6 +56,7 @@ export const createReport = asyncHandler(async (req, res) => {
 export const addReportFeedback = asyncHandler(async (req, res) => {
   const existing = await findReportById(req.params.id);
   if (!existing) throw ApiError.notFound('Report not found');
+  await assertUserInCompany(req, existing.client);
 
   const report = await addReportFeedbackRecord(req.params.id, {
     authorId: req.user.id,
@@ -72,6 +76,7 @@ export const addReportFeedback = asyncHandler(async (req, res) => {
 export const getReportFile = asyncHandler(async (req, res, next) => {
   const report = await findReportById(req.params.id);
   if (!report) throw ApiError.notFound('Report not found');
+  await assertUserInCompany(req, report.client);
 
   if (req.user.role === 'client') {
     if (String(report.client) !== req.user.id) throw ApiError.forbidden();
@@ -104,6 +109,7 @@ export const getReportFile = asyncHandler(async (req, res, next) => {
 export const deleteReport = asyncHandler(async (req, res) => {
   const report = await findReportById(req.params.id);
   if (!report) throw ApiError.notFound('Report not found');
+  await assertUserInCompany(req, report.client);
   if (req.user.role !== 'admin' && String(report.client) !== req.user.id) throw ApiError.forbidden();
 
   await deleteReportById(req.params.id);

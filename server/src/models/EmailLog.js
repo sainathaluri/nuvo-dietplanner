@@ -74,17 +74,34 @@ export async function enqueueEmail({
   return findEmailLogById(id);
 }
 
-// filter: { status? }
+// filter: { companyId, status? } — companyId required, same reasoning as every other model in
+// this file's sweep. email_log's related_entity is polymorphic (client/appointment/enquiry, no
+// FK — see the schema.sql comment on this table), so company is resolved per row by joining each
+// possible target to its own company: a related client is a users.id (company_id direct), an
+// appointment is a calls.id (via its dietitian's company_id), an enquiry is an enquiries.id
+// (company_id direct). A row with no related entity is excluded rather than shown platform-wide —
+// there is none in practice (every sendEmail() caller sets one), but this fails closed if that
+// ever changes.
 export async function listEmailLogs(filter = {}, { skip = 0, limit = 50 } = {}) {
-  const where = [];
-  const params = [];
+  if (!filter.companyId) throw new Error('listEmailLogs: companyId is required');
+  const where = [
+    `((el.related_entity_type = 'client' AND cu.company_id = ?)
+      OR (el.related_entity_type = 'appointment' AND du.company_id = ?)
+      OR (el.related_entity_type = 'enquiry' AND eq.company_id = ?))`,
+  ];
+  const params = [filter.companyId, filter.companyId, filter.companyId];
   if (filter.status) {
-    where.push('status = ?');
+    where.push('el.status = ?');
     params.push(filter.status);
   }
-  const whereSql = where.length ? ` WHERE ${where.join(' AND ')}` : '';
   const [rows] = await pool.query(
-    `SELECT * FROM email_log${whereSql} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+    `SELECT el.* FROM email_log el
+     LEFT JOIN users cu ON el.related_entity_type = 'client' AND cu.id = el.related_entity_id
+     LEFT JOIN calls c ON el.related_entity_type = 'appointment' AND c.id = el.related_entity_id
+     LEFT JOIN users du ON du.id = c.dietitian_id
+     LEFT JOIN enquiries eq ON el.related_entity_type = 'enquiry' AND eq.id = el.related_entity_id
+     WHERE ${where.join(' AND ')}
+     ORDER BY el.created_at DESC LIMIT ? OFFSET ?`,
     [...params, limit, skip]
   );
   return rows.map(mapEmailLog);

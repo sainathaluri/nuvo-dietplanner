@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
-import { login, refresh, logout, me, changePassword, forgotPassword, resetPassword } from '../controllers/auth.controller.js';
+import { login, refresh, logout, me, changePassword, forgotPassword, resetPassword, handoff } from '../controllers/auth.controller.js';
 import { validate } from '../middleware/validate.js';
-import { loginSchema, changePasswordSchema, forgotPasswordSchema, resetPasswordSchema } from '../schemas/auth.schema.js';
+import { loginSchema, changePasswordSchema, forgotPasswordSchema, resetPasswordSchema, handoffSchema } from '../schemas/auth.schema.js';
 import { authenticate } from '../middleware/authenticate.js';
 
 export const authRouter = Router();
@@ -19,6 +19,7 @@ const forgotPasswordLimiter = rateLimit({
 });
 
 authRouter.post('/login', validate(loginSchema), login);
+authRouter.post('/handoff', validate(handoffSchema), handoff);
 authRouter.post('/forgot-password', forgotPasswordLimiter, validate(forgotPasswordSchema), forgotPassword);
 authRouter.post('/reset-password', validate(resetPasswordSchema), resetPassword);
 authRouter.post('/refresh', refresh);

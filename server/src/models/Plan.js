@@ -84,24 +84,29 @@ async function getMealsForPlans(planIds) {
   return mealsByPlan;
 }
 
-// filter: { client?, dietitian?, week? }
+// filter: { companyId, client?, dietitian?, week? } — companyId required (no direct company_id
+// column on plans; scoped via the owning dietitian's own company — client and dietitian are
+// always same-company by construction, see plan.controller.js#createPlan's validation).
 export async function listPlans(filter = {}) {
-  const where = [];
-  const params = [];
+  if (!filter.companyId) throw new Error('listPlans: companyId is required');
+  const where = ['du.company_id = ?'];
+  const params = [filter.companyId];
   if (filter.client) {
-    where.push('client_id = ?');
+    where.push('p.client_id = ?');
     params.push(filter.client);
   }
   if (filter.dietitian) {
-    where.push('dietitian_id = ?');
+    where.push('p.dietitian_id = ?');
     params.push(filter.dietitian);
   }
   if (filter.week) {
-    where.push('week = ?');
+    where.push('p.week = ?');
     params.push(filter.week);
   }
-  const whereSql = where.length ? ` WHERE ${where.join(' AND ')}` : '';
-  const [rows] = await pool.query(`SELECT * FROM plans${whereSql} ORDER BY week DESC`, params);
+  const [rows] = await pool.query(
+    `SELECT p.* FROM plans p JOIN users du ON du.id = p.dietitian_id WHERE ${where.join(' AND ')} ORDER BY p.week DESC`,
+    params
+  );
   const mealsByPlan = await getMealsForPlans(rows.map((r) => r.id));
   return rows.map((row) => ({ ...mapPlan(row), meals: mealsByPlan.get(row.id) ?? [] }));
 }

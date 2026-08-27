@@ -12,6 +12,7 @@
 
 import { MongoClient } from 'mongodb';
 import { withTransaction, pool } from './pool.js';
+import { env } from '../config/env.js';
 
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/nourishly';
 
@@ -20,11 +21,15 @@ function oid(value) {
 }
 
 async function migrateUsers(conn, db) {
+  // company_id (multi-tenancy, 2026-08-27): every row created by this one-off script predates
+  // tenants, same as the rest of this app's pre-existing data — see db/migrate.js's
+  // backfillLegacyCompany for the live equivalent of this same choice.
+  if (!env.legacyCompanyId) throw new Error('LEGACY_COMPANY_ID is not configured');
   const docs = await db.collection('users').find().toArray();
   for (const doc of docs) {
     await conn.query(
-      `INSERT INTO users (id, name, email, password_hash, role, phone, assigned_dietitian_id, refresh_token_version, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO users (id, name, email, password_hash, role, phone, assigned_dietitian_id, refresh_token_version, company_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         oid(doc._id),
         doc.name,
@@ -34,6 +39,7 @@ async function migrateUsers(conn, db) {
         doc.phone ?? null,
         oid(doc.assignedDietitian),
         doc.refreshTokenVersion ?? 0,
+        env.legacyCompanyId,
         doc.createdAt,
         doc.updatedAt,
       ]

@@ -14,4 +14,8 @@ export default defineConfig({
       '@': path.resolve(dirname, './src'),
     },
   },
+  // Pinned (not Vite's default-and-drift-on-conflict behavior): admin-server's
+  // ZENX_DIETITIAN_URL and this app's own CLIENT_ORIGIN both hardcode 5173 — a silent port bump
+  // here would break the SSO handoff and CORS without any error, only a confusing 401/403 later.
+  server: { port: 5173, strictPort: true },
 })

@@ -16,17 +16,20 @@ import { ApiError } from '../../src/utils/ApiError.js';
 
 let dietitianId;
 let clientId;
+// Any string works — no real FK to admin-server's companies table (cross-service id, see the
+// company_id comment in schema.sql). Fixed per-run so both rows are unambiguously same-company.
+const companyId = newId();
 
 before(async () => {
   dietitianId = newId();
   clientId = newId();
   await pool.query(
-    "INSERT INTO users (id, name, email, password_hash, role) VALUES (?, 'Race Test Dietitian', ?, 'x', 'dietitian')",
-    [dietitianId, `race-dietitian-${dietitianId}@test.local`]
+    "INSERT INTO users (id, name, email, password_hash, role, company_id) VALUES (?, 'Race Test Dietitian', ?, 'x', 'dietitian', ?)",
+    [dietitianId, `race-dietitian-${dietitianId}@test.local`, companyId]
   );
   await pool.query(
-    "INSERT INTO users (id, name, email, password_hash, role) VALUES (?, 'Race Test Client', ?, 'x', 'client')",
-    [clientId, `race-client-${clientId}@test.local`]
+    "INSERT INTO users (id, name, email, password_hash, role, company_id) VALUES (?, 'Race Test Client', ?, 'x', 'client', ?)",
+    [clientId, `race-client-${clientId}@test.local`, companyId]
   );
 });
 

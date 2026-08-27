@@ -17,7 +17,9 @@ async function resolveDietitianId(req) {
   const dietitianId = req.query.dietitian || req.body.dietitian;
   if (!dietitianId) throw ApiError.badRequest('dietitian is required');
   const dietitian = await findUserById(dietitianId);
-  if (!dietitian || dietitian.role !== 'dietitian') throw ApiError.badRequest('Invalid dietitian');
+  if (!dietitian || dietitian.role !== 'dietitian' || dietitian.companyId !== req.user.companyId) {
+    throw ApiError.badRequest('Invalid dietitian');
+  }
   return dietitianId;
 }
 

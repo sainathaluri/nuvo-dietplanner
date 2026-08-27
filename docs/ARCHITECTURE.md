@@ -22,6 +22,32 @@ Nourishly is a monorepo with two independently run apps:
 - `server/src/middleware/authenticate.js` verifies the access token and loads `req.user`;
   `authorize(...roles)` gates by role; per-resource ownership checks live in each controller.
 
+## Multi-tenancy (shared ZenX auth)
+
+Nourishly (this app) is the customer SaaS side of a two-app pair: the sibling `admin-server`
+repo (ZenX) is the source of truth for organizations ("companies") and their subscriptions, and
+this app is where each subscribing company's own dietitians/clients live and work. A company's
+contact reaches this app via SSO — `POST /api/auth/handoff` verifies a short-lived JWT admin-server
+signs (`ZENX_HANDOFF_SECRET`, shared between the two deployments) and either links or creates the
+local account, carrying that token's `company_id`/`company_slug`/role through onto `users`.
+
+- Every `users` row has a `company_id` (admin-server's real `companies.id` — no FK, cross-service
+  id, same trust model as `zenx_user_id`). A ZenX `'wellness_admin'` grant becomes this app's org
+  `admin`; anything else becomes `dietitian`.
+- `admin` is **org-scoped, not platform-scoped**: every list/find query filters by
+  `req.user.companyId`, and `utils/scope.js#assertUserInCompany`/`assertDietitianOwnsClient` gate
+  every by-id lookup the same way. There is no "see everything" role in this app — a ZenX platform
+  admin only exists in admin-server's own `profiles` table, never here.
+- Only `users`/`enquiries`/`program_plans` carry `company_id` directly; every other tenant-owned
+  table (`recipes`, `plans`, `calls`, `messages`, ...) is scoped transitively through its owning
+  user's `company_id` — same convention already used for child tables like `plan_meals`.
+- Pre-multi-tenancy data (and local dev/seed data) lives under one real, ZenX-managed "Legacy
+  Practice" company (`LEGACY_COMPANY_ID`) rather than an unscoped NULL — see `db/migrate.js`'s
+  `backfillLegacyCompany` and `docs/worklog/2026-08-27.md`.
+- An org `admin` creating a sub-user (`user.controller.js#createUser`) always stamps
+  `companyId: req.user.companyId` — never client-supplied — so a company can only ever grow its
+  own roster, matching "Wellness admins manage their own users."
+
 ## Request flow (server)
 
 `routes/*.routes.js` → `middleware/validate.js` (zod) → `middleware/authenticate.js` /

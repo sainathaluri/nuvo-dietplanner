@@ -8,6 +8,7 @@ import { createClientNote } from './models/ClientNote.js';
 import { createMessage, markConversationRead } from './models/Message.js';
 import { createReport, addReportFeedback } from './models/Report.js';
 import { hashPassword } from './utils/password.js';
+import { env } from './config/env.js';
 
 // One known-credential user per role, for local dev and manual portal testing.
 // Documented in docs/worklog — re-run any time with `npm run seed` (idempotent: existing
@@ -215,6 +216,13 @@ async function seedDemoData(dietitian, client) {
 }
 
 async function seed() {
+  // Demo users need a real company_id (multi-tenancy — see schema.sql's comment on users.company_id).
+  // Reuses the same LEGACY_COMPANY_ID env var db/migrate.js's backfill uses, from admin-server's
+  // seedLegacyCompany — there is no separate "seed company" concept.
+  if (!env.legacyCompanyId) {
+    throw new Error('LEGACY_COMPANY_ID is not configured — run admin-server\'s seed first and set it in .env');
+  }
+
   const created = [];
   const skipped = [];
 
@@ -224,7 +232,7 @@ async function seed() {
       skipped.push(email);
       continue;
     }
-    await createUser({ name, email, passwordHash: await hashPassword(password), role });
+    await createUser({ name, email, passwordHash: await hashPassword(password), role, companyId: env.legacyCompanyId });
     created.push(email);
   }
 

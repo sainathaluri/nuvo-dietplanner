@@ -9,13 +9,20 @@
 -- (not `plans`) specifically to avoid colliding with that existing, unrelated concept. Admin-only
 -- create/edit/activate-deactivate (no delete) — automatically visible to every dietitian, so no
 -- per-dietitian ownership column.
+-- company_id (2026-08-27, multi-tenancy): the ZenX company (admin-server's companies.id) this
+-- program plan belongs to — each org curates its own catalog, never shared across companies. No
+-- FK: cross-service id, same trust model as users.zenx_user_id. NOT NULL here (fresh installs
+-- only) — migrate.js's ALTERS backfill it as nullable on an existing database, same asymmetric
+-- pattern already used for e.g. plans.week_end/users.account_status.
 CREATE TABLE IF NOT EXISTS program_plans (
   id VARCHAR(36) PRIMARY KEY,
+  company_id VARCHAR(36) NOT NULL,
   name VARCHAR(255) NOT NULL,
   description TEXT NULL,
   active BOOLEAN NOT NULL DEFAULT TRUE,
   created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  KEY idx_program_plans_company (company_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS users (
@@ -54,18 +61,39 @@ CREATE TABLE IF NOT EXISTS users (
   -- dietitian who hasn't set their real timezone yet keeps exactly the pre-timezone comparison
   -- behavior (UTC-as-local) rather than being silently relocated.
   timezone VARCHAR(64) NOT NULL DEFAULT 'UTC',
+  -- Identity of this user's ZenX customer-portal account (admin-server's zenx_users.id), set the
+  -- first time they arrive via SSO handoff — see auth.controller.js#handoff. NULL for any user
+  -- created directly in this app (the normal admin-creates-a-dietitian/client flow). Looked up
+  -- before email, since a ZenX-side email change must not orphan the link.
+  zenx_user_id VARCHAR(36) NULL,
+  -- company_id/company_slug (2026-08-27, multi-tenancy): the ZenX company (admin-server's
+  -- companies.id/company_slug) this user's org is. Set from the handoff token's own company_id/
+  -- company_slug claims (auth.controller.js#handoff) for an SSO-linked account, or copied from the
+  -- creating admin's own companyId for a user created directly inside this app
+  -- (user.controller.js#createUser) — never client-settable. NOT NULL here (fresh installs only);
+  -- see the program_plans comment above for why migrate.js's ALTER keeps it nullable on an
+  -- existing database. No FK: cross-service id, same trust model as zenx_user_id.
+  company_id VARCHAR(36) NOT NULL,
+  company_slug VARCHAR(255) NULL,
   created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   UNIQUE KEY uq_users_email (email),
+  UNIQUE KEY uq_users_zenx_user (zenx_user_id),
   KEY idx_users_role (role),
   KEY idx_users_assigned_dietitian (assigned_dietitian_id),
   KEY idx_users_program_plan (program_plan_id),
+  KEY idx_users_company (company_id),
   CONSTRAINT fk_users_assigned_dietitian FOREIGN KEY (assigned_dietitian_id) REFERENCES users(id) ON DELETE SET NULL,
   CONSTRAINT fk_users_program_plan FOREIGN KEY (program_plan_id) REFERENCES program_plans(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- company_id (2026-08-27, multi-tenancy): which org's public "book a consultation" funnel this
+-- lead came through — see enquiry.controller.js#createEnquiry (defaults to the legacy company for
+-- the one existing funnel; a real per-company public funnel is a future addition). NOT NULL here
+-- (fresh installs only) — see the program_plans comment above for the asymmetric-backfill pattern.
 CREATE TABLE IF NOT EXISTS enquiries (
   id VARCHAR(36) PRIMARY KEY,
+  company_id VARCHAR(36) NOT NULL,
   goal VARCHAR(255) NOT NULL,
   name VARCHAR(255) NOT NULL,
   email VARCHAR(255) NOT NULL,
@@ -85,6 +113,7 @@ CREATE TABLE IF NOT EXISTS enquiries (
   KEY idx_enquiries_status (status),
   KEY idx_enquiries_created_at (created_at),
   KEY idx_enquiries_converted_user (converted_user_id),
+  KEY idx_enquiries_company (company_id),
   CONSTRAINT fk_enquiries_converted_user FOREIGN KEY (converted_user_id) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -146,8 +175,10 @@ CREATE TABLE IF NOT EXISTS plans (
 -- typed name is what's actually saved here, and whether a saved meal is "custom" is derived by
 -- membership in the fixed list, not a separate flag. `recipe_id`/`custom_title` are mutually
 -- exclusive (never both set — a slot references a catalog recipe OR a manually typed one, or
--- neither if the slot hasn't been filled in yet), enforced below by CHECK, not just in application
--- code.
+-- neither if the slot hasn't been filled in yet), enforced below by trigger, not just in
+-- application code. This can't be a CHECK constraint: MySQL rejects a CHECK on a column that
+-- also carries an FK with a SET NULL/CASCADE/SET DEFAULT referential action (errno 3823), and
+-- fk_plan_meals_recipe below is ON DELETE SET NULL — see the trigger pair after this table.
 CREATE TABLE IF NOT EXISTS plan_meals (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
   plan_id VARCHAR(36) NOT NULL,
@@ -163,9 +194,28 @@ CREATE TABLE IF NOT EXISTS plan_meals (
   KEY idx_plan_meals_plan (plan_id, idx),
   KEY idx_plan_meals_recipe (recipe_id),
   CONSTRAINT fk_plan_meals_plan FOREIGN KEY (plan_id) REFERENCES plans(id) ON DELETE CASCADE,
-  CONSTRAINT fk_plan_meals_recipe FOREIGN KEY (recipe_id) REFERENCES recipes(id) ON DELETE SET NULL,
-  CONSTRAINT chk_plan_meals_recipe_or_custom CHECK (recipe_id IS NULL OR custom_title IS NULL)
+  CONSTRAINT fk_plan_meals_recipe FOREIGN KEY (recipe_id) REFERENCES recipes(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Runs unconditionally on every migrate.js invocation (this whole file does — see migrate.js),
+-- so DROP-then-CREATE is what makes it idempotent, matching CREATE TABLE IF NOT EXISTS above.
+-- recipe_id's own ON DELETE SET NULL action can never trip this: it only ever clears recipe_id,
+-- which makes the guard's condition MORE false, never less.
+DROP TRIGGER IF EXISTS trg_plan_meals_recipe_xor_custom_insert;
+CREATE TRIGGER trg_plan_meals_recipe_xor_custom_insert BEFORE INSERT ON plan_meals FOR EACH ROW
+BEGIN
+  IF NEW.recipe_id IS NOT NULL AND NEW.custom_title IS NOT NULL THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'plan_meals: recipe_id and custom_title are mutually exclusive';
+  END IF;
+END;
+
+DROP TRIGGER IF EXISTS trg_plan_meals_recipe_xor_custom_update;
+CREATE TRIGGER trg_plan_meals_recipe_xor_custom_update BEFORE UPDATE ON plan_meals FOR EACH ROW
+BEGIN
+  IF NEW.recipe_id IS NOT NULL AND NEW.custom_title IS NOT NULL THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'plan_meals: recipe_id and custom_title are mutually exclusive';
+  END IF;
+END;
 
 -- `reminder_minutes_before` (minutes, or NULL for none) drives the client's in-app pop-up
 -- reminder — see client/src/hooks/useCallReminders.js.

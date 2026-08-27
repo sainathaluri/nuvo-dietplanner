@@ -7,7 +7,7 @@ import {
 } from '../models/Progress.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { ApiError } from '../utils/ApiError.js';
-import { assertDietitianOwnsClient } from '../utils/scope.js';
+import { assertDietitianOwnsClient, assertUserInCompany } from '../utils/scope.js';
 import { toClientShape } from '../utils/serialize.js';
 
 export const listProgress = asyncHandler(async (req, res) => {
@@ -30,6 +30,7 @@ export const createProgress = asyncHandler(async (req, res) => {
 export const updateProgress = asyncHandler(async (req, res) => {
   const entry = await findProgressById(req.params.id);
   if (!entry) throw ApiError.notFound('Progress entry not found');
+  await assertUserInCompany(req, entry.client);
   if (req.user.role !== 'admin' && String(entry.client) !== req.user.id) throw ApiError.forbidden();
 
   const updated = await updateProgressById(req.params.id, req.body);
@@ -39,6 +40,7 @@ export const updateProgress = asyncHandler(async (req, res) => {
 export const deleteProgress = asyncHandler(async (req, res) => {
   const entry = await findProgressById(req.params.id);
   if (!entry) throw ApiError.notFound('Progress entry not found');
+  await assertUserInCompany(req, entry.client);
   if (req.user.role !== 'admin' && String(entry.client) !== req.user.id) throw ApiError.forbidden();
 
   await deleteProgressById(req.params.id);

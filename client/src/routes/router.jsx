@@ -11,6 +11,7 @@ const lazyNamed = (loader, name) => lazy(() => loader().then((m) => ({ default: 
 
 const HomePage = lazyNamed(() => import('@/pages/HomePage'), 'HomePage');
 const LoginPage = lazyNamed(() => import('@/pages/LoginPage'), 'LoginPage');
+const HandoffPage = lazyNamed(() => import('@/pages/HandoffPage'), 'HandoffPage');
 const ForgotPasswordPage = lazyNamed(() => import('@/pages/ForgotPasswordPage'), 'ForgotPasswordPage');
 const ResetPasswordPage = lazyNamed(() => import('@/pages/ResetPasswordPage'), 'ResetPasswordPage');
 const ChangePasswordPage = lazyNamed(() => import('@/pages/ChangePasswordPage'), 'ChangePasswordPage');
@@ -49,6 +50,7 @@ export const router = createBrowserRouter([
     children: [
       { path: '/', element: <HomePage /> },
       { path: '/login', element: <LoginPage /> },
+      { path: '/:companySlug/handoff', element: <HandoffPage /> },
       { path: '/forgot-password', element: <ForgotPasswordPage /> },
       { path: '/reset-password', element: <ResetPasswordPage /> },
       { path: '/unauthorized', element: <UnauthorizedPage /> },

@@ -18,6 +18,7 @@ import { notifyClientAccountCreated } from '../services/accountNotifications.js'
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { ApiError } from '../utils/ApiError.js';
 import { toClientShape } from '../utils/serialize.js';
+import { env } from '../config/env.js';
 
 // Duplicated from client/src/lib/enquiryStatus.js's STATUS_LABEL — this monorepo has no package
 // shared between client/ and server/ (see similar duplication comments elsewhere, e.g.
@@ -54,19 +55,24 @@ async function createConvertedAccount(enquiry, { planId, planDuration, password 
       programPlan: planId,
       planDuration,
       mustChangePassword: true,
+      companyId: enquiry.companyId,
     },
     conn
   );
 }
 
+// Public, unauthenticated — there is one public funnel today, so it always attaches to the
+// configured legacy/default company (see env.js#legacyCompanyId's comment). A real per-company
+// public funnel (e.g. resolved from a URL slug) is future work, not built here.
 export const createEnquiry = asyncHandler(async (req, res) => {
-  const enquiry = await createEnquiryRecord(req.body);
+  if (!env.legacyCompanyId) throw new Error('LEGACY_COMPANY_ID is not configured');
+  const enquiry = await createEnquiryRecord({ ...req.body, companyId: env.legacyCompanyId });
   await notifyEnquirySubmitted(enquiry);
   res.status(201).json(toClientShape(enquiry));
 });
 
 export const listEnquiries = asyncHandler(async (req, res) => {
-  const filter = {};
+  const filter = { companyId: req.user.companyId };
   if (req.query.status) filter.status = req.query.status;
 
   const page = req.query.page ?? 1;
@@ -86,9 +92,16 @@ export const listEnquiries = asyncHandler(async (req, res) => {
   });
 });
 
+// findEnquiryById is a bare by-id lookup (also used mid-transaction elsewhere), so every
+// controller entry point re-checks company ownership here — a 404, not 403, so a wrong-company id
+// doesn't reveal that the enquiry exists at all.
+function assertOwnEnquiry(req, enquiry) {
+  if (!enquiry || enquiry.companyId !== req.user.companyId) throw ApiError.notFound('Enquiry not found');
+}
+
 export const getEnquiry = asyncHandler(async (req, res) => {
   const enquiry = await findEnquiryById(req.params.id);
-  if (!enquiry) throw ApiError.notFound('Enquiry not found');
+  assertOwnEnquiry(req, enquiry);
   res.json(toClientShape(enquiry));
 });
 
@@ -102,7 +115,7 @@ export const getEnquiry = asyncHandler(async (req, res) => {
 // effects, same as before.
 export const updateEnquiry = asyncHandler(async (req, res) => {
   const existing = await findEnquiryById(req.params.id);
-  if (!existing) throw ApiError.notFound('Enquiry not found');
+  assertOwnEnquiry(req, existing);
 
   const { status, note } = req.body;
 
@@ -172,12 +185,14 @@ export const updateEnquiry = asyncHandler(async (req, res) => {
 // immutable timeline for one enquiry (never paginated — a single lead's history stays small).
 export const getEnquiryHistory = asyncHandler(async (req, res) => {
   const enquiry = await findEnquiryById(req.params.id);
-  if (!enquiry) throw ApiError.notFound('Enquiry not found');
+  assertOwnEnquiry(req, enquiry);
   const history = await listByEnquiryId(req.params.id);
   res.json(history.map((entry) => toClientShape(entry)));
 });
 
 export const deleteEnquiry = asyncHandler(async (req, res) => {
+  const existing = await findEnquiryById(req.params.id);
+  assertOwnEnquiry(req, existing);
   const enquiry = await deleteEnquiryById(req.params.id);
   if (!enquiry) throw ApiError.notFound('Enquiry not found');
   res.status(204).send();

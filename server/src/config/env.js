@@ -15,6 +15,18 @@ export const env = {
   jwtAccessTtl: process.env.JWT_ACCESS_TTL || '15m',
   jwtRefreshTtl: process.env.JWT_REFRESH_TTL || '30d',
   clientOrigin: process.env.CLIENT_ORIGIN || 'http://localhost:5173',
+  // Shared with admin-server's ZENX_DIETITIAN_HANDOFF_SECRET (see that repo's customerAuth
+  // .controller.js#issueHandoffToken) — verifies the SSO token in auth.controller.js#handoff. Not
+  // `required(...)`: unset must not crash the whole server on boot, same reasoning as
+  // resendApiKey below — the handoff route itself rejects with a clear error if this is empty.
+  zenxHandoffSecret: process.env.ZENX_HANDOFF_SECRET || '',
+  // The real company id admin-server's seedLegacyCompany creates/prints (see that repo's seed.js).
+  // Used once by db/migrate.js to backfill pre-multi-tenancy rows, and then at runtime as the
+  // company the public, unauthenticated enquiry funnel (enquiry.controller.js#createEnquiry)
+  // attaches a new lead to — there is only one public funnel today (a real per-company one, e.g.
+  // resolved from a URL slug, is future work). Not `required(...)`: must not crash server boot: a
+  // server that hasn't been migrated yet still needs to start so /health etc. work.
+  legacyCompanyId: process.env.LEGACY_COMPANY_ID || '',
   // Not `required(...)`: an empty key must not crash the whole server on boot (every other route
   // still has to work without one configured) — utils/email.js throws a clear error at send time
   // instead, which forgotPassword's controller already catches and logs.

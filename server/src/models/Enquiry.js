@@ -6,6 +6,7 @@ function mapEnquiry(row) {
   if (!row) return null;
   return {
     id: row.id,
+    companyId: row.company_id,
     goal: row.goal,
     name: row.name,
     email: row.email,
@@ -19,40 +20,41 @@ function mapEnquiry(row) {
   };
 }
 
-export async function createEnquiry({ goal, name, email, phone, preferredSlot = null, note = null }) {
+export async function createEnquiry({ companyId, goal, name, email, phone, preferredSlot = null, note = null }) {
+  if (!companyId) throw new Error('createEnquiry: companyId is required');
   const id = newId();
   await pool.query(
-    'INSERT INTO enquiries (id, goal, name, email, phone, preferred_slot, note) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    [id, goal, name, email, phone, preferredSlot, note]
+    'INSERT INTO enquiries (id, company_id, goal, name, email, phone, preferred_slot, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    [id, companyId, goal, name, email, phone, preferredSlot, note]
   );
   return findEnquiryById(id);
 }
 
-// filter: { status? }
+// filter: { companyId, status? } — companyId required, same reasoning as User.js#listUsers.
 export async function listEnquiries(filter = {}, { skip = 0, limit = 20 } = {}) {
-  const where = [];
-  const params = [];
+  if (!filter.companyId) throw new Error('listEnquiries: companyId is required');
+  const where = ['company_id = ?'];
+  const params = [filter.companyId];
   if (filter.status) {
     where.push('status = ?');
     params.push(filter.status);
   }
-  const whereSql = where.length ? ` WHERE ${where.join(' AND ')}` : '';
   const [rows] = await pool.query(
-    `SELECT * FROM enquiries${whereSql} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+    `SELECT * FROM enquiries WHERE ${where.join(' AND ')} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
     [...params, limit, skip]
   );
   return rows.map(mapEnquiry);
 }
 
 export async function countEnquiries(filter = {}) {
-  const where = [];
-  const params = [];
+  if (!filter.companyId) throw new Error('countEnquiries: companyId is required');
+  const where = ['company_id = ?'];
+  const params = [filter.companyId];
   if (filter.status) {
     where.push('status = ?');
     params.push(filter.status);
   }
-  const whereSql = where.length ? ` WHERE ${where.join(' AND ')}` : '';
-  const [rows] = await pool.query(`SELECT COUNT(*) AS count FROM enquiries${whereSql}`, params);
+  const [rows] = await pool.query(`SELECT COUNT(*) AS count FROM enquiries WHERE ${where.join(' AND ')}`, params);
   return Number(rows[0].count);
 }
 
@@ -82,14 +84,16 @@ export async function deleteEnquiryById(id) {
   return existing;
 }
 
-export async function countEnquiriesByStatus() {
-  const [rows] = await pool.query('SELECT status, COUNT(*) AS count FROM enquiries GROUP BY status');
+export async function countEnquiriesByStatus(companyId) {
+  if (!companyId) throw new Error('countEnquiriesByStatus: companyId is required');
+  const [rows] = await pool.query('SELECT status, COUNT(*) AS count FROM enquiries WHERE company_id = ? GROUP BY status', [companyId]);
   return rows.map((r) => ({ status: r.status, count: Number(r.count) }));
 }
 
 // Raw created_at timestamps for a window — bucketed into weeks in JS by the caller
 // (insights.controller.js reuses its existing UTC-safe startOfWeek() helper).
-export async function listEnquiryCreatedAtSince(date) {
-  const [rows] = await pool.query('SELECT created_at FROM enquiries WHERE created_at >= ?', [date]);
+export async function listEnquiryCreatedAtSince(companyId, date) {
+  if (!companyId) throw new Error('listEnquiryCreatedAtSince: companyId is required');
+  const [rows] = await pool.query('SELECT created_at FROM enquiries WHERE company_id = ? AND created_at >= ?', [companyId, date]);
   return rows.map((r) => r.created_at);
 }

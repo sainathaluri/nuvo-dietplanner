@@ -42,10 +42,13 @@ async function feedbackByReportIds(reportIds) {
   return map;
 }
 
-// filter: { client? } or { clientIn: string[] } — matches .populate('client', 'name')
+// filter: { companyId, client? } or { companyId, clientIn: string[] } — matches .populate('client', 'name').
+// companyId required (no direct company_id column on reports; scoped via the owning client's own
+// company, same transitive-scoping design used throughout).
 export async function listReports(filter = {}) {
-  const where = [];
-  const params = [];
+  if (!filter.companyId) throw new Error('listReports: companyId is required');
+  const where = ['u.company_id = ?'];
+  const params = [filter.companyId];
   if (filter.client) {
     where.push('r.client_id = ?');
     params.push(filter.client);
@@ -54,9 +57,8 @@ export async function listReports(filter = {}) {
     where.push(`r.client_id IN (${filter.clientIn.map(() => '?').join(',')})`);
     params.push(...filter.clientIn);
   }
-  const whereSql = where.length ? ` WHERE ${where.join(' AND ')}` : '';
   const [rows] = await pool.query(
-    `SELECT r.*, u.name AS client_name FROM reports r JOIN users u ON u.id = r.client_id ${whereSql} ORDER BY r.created_at DESC`,
+    `SELECT r.*, u.name AS client_name FROM reports r JOIN users u ON u.id = r.client_id WHERE ${where.join(' AND ')} ORDER BY r.created_at DESC`,
     params
   );
   const feedbackByReport = await feedbackByReportIds(rows.map((r) => r.id));

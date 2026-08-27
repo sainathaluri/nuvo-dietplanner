@@ -1,8 +1,22 @@
 # Progress
 
-Last updated: 2026-08-24 (consultation schedules now actually generate their calls — a rolling 60-day window kept fresh by a recurring job, idempotent, gap-tracked, batch-notified).
+Last updated: 2026-08-27 (real multi-tenancy — this app is no longer single-tenant; every company
+that subscribes via ZenX gets its own isolated slice of data and its own org admin).
 For the detailed day-by-day build journal, see `docs/worklog/` — this file is the current-state
 summary; the worklog is the history.
+
+**Update, 2026-08-27: shared ZenX auth → real organization isolation.** ZenX's admin-server already
+had a working shared-auth backbone (companies/customers/RBAC, SSO handoff) and this app already
+received it, but had zero tenant scoping of its own — one flat pool of users/data, `admin` global
+platform-wide. Added `company_id` to the three top-level owner tables (`users`, `enquiries`,
+`program_plans`); every other table is scoped transitively through its owning user. `handoff` now
+carries the token's `company_id`/role through instead of discarding them (a ZenX company contact
+becomes this app's org `admin`, not a hardcoded `dietitian`). Existing pre-multi-tenancy data
+backfilled onto one real, ZenX-managed "Legacy Practice" company — see
+`docs/worklog/2026-08-27.md` for the full breakdown, including several `admin`-bypasses-everything
+gaps found and closed along the way (client notes, progress, plans, calls, availability, email log)
+that a list-endpoint-only pass would have missed. Not verified against a live database this
+session — no local MySQL reachable; still needs the two-company SSO handoff runbook run for real.
 
 **Update, 2026-08-24 (session 2): consultation schedules now generate real, ongoing appointments —
 a rolling 60-day window instead of the one-time 6-call batch from earlier today.** A recurring

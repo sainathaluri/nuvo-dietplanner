@@ -21,6 +21,9 @@ function mapUser(row) {
     programPlan: row.program_plan_id,
     planDuration: row.plan_duration,
     timezone: row.timezone,
+    zenxUserId: row.zenx_user_id,
+    companyId: row.company_id,
+    companySlug: row.company_slug,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -35,6 +38,13 @@ const SELECT_WITH_PROGRAM_PLAN = `SELECT u.*, pp.name AS program_plan_name FROM 
 
 export async function findUserByEmail(email) {
   const [rows] = await pool.query('SELECT * FROM users WHERE email = ? LIMIT 1', [email]);
+  return mapUser(rows[0]);
+}
+
+// See the zenx_user_id comment in schema.sql — checked before email by the SSO handoff (never the
+// other way around) so a ZenX-side email change can't orphan an already-linked local account.
+export async function findUserByZenxId(zenxUserId) {
+  const [rows] = await pool.query('SELECT * FROM users WHERE zenx_user_id = ? LIMIT 1', [zenxUserId]);
   return mapUser(rows[0]);
 }
 
@@ -59,23 +69,38 @@ export async function createUser(
     mustChangePassword = false,
     programPlan = null,
     planDuration = null,
+    zenxUserId = null,
+    companyId,
+    companySlug = null,
   },
   conn = pool
 ) {
+  if (!companyId) throw new Error('createUser: companyId is required');
   const id = newId();
   await conn.query(
     `INSERT INTO users
-      (id, name, email, password_hash, role, phone, address, qualifications, assigned_dietitian_id, must_change_password, program_plan_id, plan_duration)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [id, name, email, passwordHash, role, phone, address, qualifications, assignedDietitian, mustChangePassword, programPlan, planDuration]
+      (id, name, email, password_hash, role, phone, address, qualifications, assigned_dietitian_id, must_change_password, program_plan_id, plan_duration, zenx_user_id, company_id, company_slug)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, name, email, passwordHash, role, phone, address, qualifications, assignedDietitian, mustChangePassword, programPlan, planDuration, zenxUserId, companyId, companySlug]
   );
   return findUserById(id, conn);
 }
 
-// filter: { role?, assignedDietitian? }
+// Kept separate from updateUser (client-facing allowlist) — only auth.controller.js#handoff calls
+// this, to link an existing email-matched account to its ZenX identity on first SSO login.
+// Deliberately never touches company_id/company_slug — see the call site's comment.
+export async function linkZenxUser(id, zenxUserId) {
+  await pool.query('UPDATE users SET zenx_user_id = ? WHERE id = ?', [zenxUserId, id]);
+  return findUserById(id);
+}
+
+// filter: { companyId, role?, assignedDietitian? } — companyId is required so every call site has
+// to consciously pass req.user.companyId; there is no "list everyone" mode left (see the removed
+// global-admin listUsers call in user.controller.js).
 export async function listUsers(filter = {}) {
-  const where = [];
-  const params = [];
+  if (!filter.companyId) throw new Error('listUsers: companyId is required');
+  const where = ['u.company_id = ?'];
+  const params = [filter.companyId];
   if (filter.role) {
     where.push('u.role = ?');
     params.push(filter.role);
@@ -84,7 +109,7 @@ export async function listUsers(filter = {}) {
     where.push('u.assigned_dietitian_id = ?');
     params.push(filter.assignedDietitian);
   }
-  const sql = `${SELECT_WITH_PROGRAM_PLAN}${where.length ? ` WHERE ${where.join(' AND ')}` : ''}`;
+  const sql = `${SELECT_WITH_PROGRAM_PLAN} WHERE ${where.join(' AND ')}`;
   const [rows] = await pool.query(sql, params);
   return rows.map(mapUser);
 }
@@ -138,8 +163,9 @@ export async function bumpRefreshTokenVersion(id) {
 }
 
 export async function countUsers(filter = {}) {
-  const where = [];
-  const params = [];
+  if (!filter.companyId) throw new Error('countUsers: companyId is required');
+  const where = ['company_id = ?'];
+  const params = [filter.companyId];
   if (filter.role) {
     where.push('role = ?');
     params.push(filter.role);
@@ -148,15 +174,18 @@ export async function countUsers(filter = {}) {
     where.push('assigned_dietitian_id = ?');
     params.push(filter.assignedDietitian);
   }
-  const sql = `SELECT COUNT(*) AS count FROM users${where.length ? ` WHERE ${where.join(' AND ')}` : ''}`;
+  const sql = `SELECT COUNT(*) AS count FROM users WHERE ${where.join(' AND ')}`;
   const [rows] = await pool.query(sql, params);
   return Number(rows[0].count);
 }
 
-// [{ dietitianId, clients }] — one row per dietitian that has at least one assigned client.
-export async function countUsersGroupedByDietitian() {
+// [{ dietitianId, clients }] — one row per dietitian (within companyId) that has at least one
+// assigned client.
+export async function countUsersGroupedByDietitian(companyId) {
+  if (!companyId) throw new Error('countUsersGroupedByDietitian: companyId is required');
   const [rows] = await pool.query(
-    "SELECT assigned_dietitian_id AS dietitianId, COUNT(*) AS clients FROM users WHERE role = 'client' AND assigned_dietitian_id IS NOT NULL GROUP BY assigned_dietitian_id"
+    "SELECT assigned_dietitian_id AS dietitianId, COUNT(*) AS clients FROM users WHERE role = 'client' AND assigned_dietitian_id IS NOT NULL AND company_id = ? GROUP BY assigned_dietitian_id",
+    [companyId]
   );
   return rows.map((r) => ({ dietitianId: r.dietitianId, clients: Number(r.clients) }));
 }
