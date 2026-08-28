@@ -23,6 +23,15 @@ before(async () => {
   companyA = newId();
   companyB = newId();
 
+  // users.company_id is a real FK into companies, so the company rows must exist before any user
+  // can point at them. Creating users first made this whole file fail in before(), which left
+  // after() (and its pool.end()) unreached — so the run hung on an open pool instead of reporting
+  // a constraint error. This is the `fk_users_company` item the 2026-08-28 worklog carried over.
+  await pool.query('INSERT INTO companies (id, name, slug, status) VALUES (?, ?, ?, ?), (?, ?, ?, ?)', [
+    companyA, 'Isolation Test A', `isolation-test-a-${companyA.slice(0, 8)}`, 'ACTIVE',
+    companyB, 'Isolation Test B', `isolation-test-b-${companyB.slice(0, 8)}`, 'ACTIVE',
+  ]);
+
   async function makeCompanyUsers(companyId, tag) {
     const admin = await createUser({
       name: `${tag} Admin`,
@@ -61,6 +70,7 @@ after(async () => {
   // Cascades: users -> recipes/enquiries (FKs are ON DELETE CASCADE/SET NULL — see schema.sql).
   await pool.query(`DELETE FROM users WHERE id IN (${userIds.map(() => '?').join(',')})`, userIds);
   await pool.query('DELETE FROM enquiries WHERE company_id IN (?, ?)', [companyA, companyB]);
+  await pool.query('DELETE FROM companies WHERE id IN (?, ?)', [companyA, companyB]);
   await pool.end();
 });
 

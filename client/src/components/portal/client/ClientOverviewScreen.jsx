@@ -36,7 +36,7 @@ export function ClientOverviewScreen() {
           <p className="mt-1 text-muted-foreground">Here's a gentle look at your day.</p>
         </div>
         <Button asChild className="rounded-full bg-coral text-white hover:bg-coral/90">
-          <Link to="/app/progress">Update progress →</Link>
+          <Link to={`/${user.companySlug}/app/progress`}>Update progress →</Link>
         </Button>
       </div>
 
@@ -44,7 +44,7 @@ export function ClientOverviewScreen() {
         <section className="rounded-card bg-white p-6 shadow-soft">
           <div className="flex items-center justify-between">
             <h2 className="text-xl">Today's meals</h2>
-            <Link to="/app/meals" className="text-sm font-semibold text-forest hover:underline">
+            <Link to={`/${user.companySlug}/app/meals`} className="text-sm font-semibold text-forest hover:underline">
               View all meals →
             </Link>
           </div>

@@ -25,7 +25,7 @@ export function DietitianOverviewScreen() {
           <p className="mt-1 text-muted-foreground">Here's what's on today, and how your clients are doing.</p>
         </div>
         <Button asChild className="rounded-full bg-coral text-white hover:bg-coral/90">
-          <Link to="/app/plan">Open plan builder →</Link>
+          <Link to={`/${user.companySlug}/app/plan`}>Open plan builder →</Link>
         </Button>
       </div>
 
@@ -53,7 +53,7 @@ export function DietitianOverviewScreen() {
             <section className="rounded-card bg-white p-6 shadow-soft">
               <div className="flex items-center justify-between">
                 <h2 className="text-xl">Today's calls</h2>
-                <Link to="/app/calls" className="text-sm font-semibold text-forest hover:underline">
+                <Link to={`/${user.companySlug}/app/calls`} className="text-sm font-semibold text-forest hover:underline">
                   View all →
                 </Link>
               </div>
@@ -91,7 +91,7 @@ export function DietitianOverviewScreen() {
             <section className="rounded-card bg-white p-6 shadow-soft">
               <div className="flex items-center justify-between">
                 <h2 className="text-xl">Your clients</h2>
-                <Link to="/app/clients" className="text-sm font-semibold text-forest hover:underline">
+                <Link to={`/${user.companySlug}/app/clients`} className="text-sm font-semibold text-forest hover:underline">
                   View all →
                 </Link>
               </div>

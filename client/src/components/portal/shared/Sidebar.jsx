@@ -1,9 +1,17 @@
 import { Link, NavLink } from 'react-router-dom';
-import { MessageCircle } from 'lucide-react';
+import { ExternalLink, MessageCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/hooks/useAuth';
 import { useUnreadMessageCount } from '@/hooks/useMessages';
+import { useMyCompany } from '@/hooks/useCompany';
 import { NAV_BY_ROLE } from '@/lib/portalNav';
+
+// The href always keeps its scheme (admin-server normalises it in on the way through), but showing
+// 'https://acme.com/' in a 200px-wide sidebar wastes the space on characters nobody reads — the
+// label drops the scheme and any trailing slash, the link itself is untouched.
+function formatWebsiteLabel(website) {
+  return website.replace(/^https?:\/\//i, '').replace(/\/$/, '');
+}
 
 // Rendered both as the fixed desktop aside and inside the mobile Sheet drawer — onNavigate lets
 // the drawer close itself when a link is clicked.
@@ -14,18 +22,41 @@ export function Sidebar({ onNavigate }) {
   const canMessage = user.role === 'client' || user.role === 'dietitian';
   const { data: unread } = useUnreadMessageCount(canMessage);
   const unreadCount = unread?.count ?? 0;
+  // Mirrored from ZenX on SSO handoff (server: models/Company.js). Undefined while loading and
+  // null for an account whose company was never mirrored — both fall back to Nourishly's own
+  // branding rather than flashing an empty header.
+  const { data: company } = useMyCompany();
 
   return (
     <div className="flex h-full flex-col bg-forest p-5 text-white">
-      <Link to="/" className="mb-10 inline-block font-display text-xl">
-        ✦ nourishly
-      </Link>
+      <div className="mb-10">
+        <Link to="/" className="inline-flex items-center gap-2 font-display text-xl">
+          {company?.logoUrl ? (
+            <img src={company.logoUrl} alt="" className="size-7 shrink-0 rounded-md object-cover" />
+          ) : (
+            <span aria-hidden="true">✦</span>
+          )}
+          <span className="truncate">{company?.name ?? 'nourishly'}</span>
+        </Link>
+
+        {company?.website && (
+          <a
+            href={company.website}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="mt-1 flex items-center gap-1 text-xs text-sage/70 hover:text-white"
+          >
+            <span className="truncate">{formatWebsiteLabel(company.website)}</span>
+            <ExternalLink className="size-3 shrink-0" aria-hidden="true" />
+          </a>
+        )}
+      </div>
 
       <nav className="grid gap-1">
         {items.map(({ to, label, icon: Icon }) => (
           <NavLink
             key={to}
-            to={to}
+            to={`/${user.companySlug}${to}`}
             onClick={onNavigate}
             className={({ isActive }) =>
               `flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm ${
@@ -55,7 +86,7 @@ export function Sidebar({ onNavigate }) {
           <p className="mt-1 text-xs text-sage/80">Your care team is here.</p>
           {canMessage ? (
             <Link
-              to="/app/messages"
+              to={`/${user.companySlug}/app/messages`}
               onClick={onNavigate}
               className="mt-3 block w-full rounded-full bg-white/10 py-1.5 text-center text-xs font-semibold hover:bg-white/20"
             >

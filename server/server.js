@@ -12,7 +12,14 @@ async function main() {
   await connectDb();
   startEmailWorker();
   startConsultationScheduleJob();
-  app.listen(env.port, () => console.log(`[server] listening on http://localhost:${env.port}`));
+  const server = app.listen(env.port, () => console.log(`[server] listening on http://localhost:${env.port}`));
+
+  // Same reason as admin-server's identical block: Node drops an idle keep-alive socket after 5s,
+  // Chrome keeps pooled sockets longer and won't silently retry a POST onto a dead one, so a login
+  // submitted after the form had been open a few seconds could come back as ERR_CONNECTION_RESET
+  // with nothing logged server-side. headersTimeout must stay above keepAliveTimeout.
+  server.keepAliveTimeout = 65_000;
+  server.headersTimeout = 66_000;
 }
 
 main().catch((err) => {

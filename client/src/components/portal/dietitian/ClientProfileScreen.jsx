@@ -28,7 +28,7 @@ const TAB_FALLBACK = <Skeleton className="h-64 w-full" />;
 // progress history, recent meal plans, call history with per-call notes, and general notes — in
 // one page, tabbed so it stays usable instead of one enormous scroll.
 export function ClientProfileScreen() {
-  const { id } = useParams();
+  const { id, companySlug } = useParams();
   const navigate = useNavigate();
   const { data: client, isLoading, isError, refetch } = useClient(id);
 
@@ -36,7 +36,7 @@ export function ClientProfileScreen() {
     <div className="mx-auto max-w-5xl p-9">
       <button
         type="button"
-        onClick={() => navigate('/app/clients')}
+        onClick={() => navigate(`/${companySlug}/app/clients`)}
         className="mb-4 inline-flex items-center gap-1 text-sm font-semibold text-forest hover:underline"
       >
         <ArrowLeft className="size-4" aria-hidden="true" />

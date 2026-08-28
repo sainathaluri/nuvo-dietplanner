@@ -598,6 +598,19 @@ never undo or block the enquiry/account/plan/call action itself, only get logged
 | GET | `/emails/:id` | admin | → `{emailLog}` (includes `error`, `attempts`, `providerMessageId`) |
 | POST | `/emails/:id/resend` | admin | → `{emailLog}` — `400` unless the row is currently `failed` (a queued/sending row is already going to be picked up on its own; resending a `sent` row would be a real duplicate delivery). Resets `attempts` to `0` (a fresh budget) and drains the queue immediately rather than waiting for the next poll interval. Added 2026-08-23 alongside a new admin **Email log** screen (`/app/email-log` — not in CLAUDE.md §5's fixed admin screen list, added because this was explicitly asked for) |
 
+## Company — `company.routes.js` (added 2026-08-28)
+
+The tenant's own company record, as **mirrored from ZenX admin-server** on each SSO handoff
+(`auth.controller.js#handoff` → `models/Company.js#upsertCompanyFromHandoff`). Read-only here by
+design: ZenX owns company identity, so there is no create/update/delete endpoint — an edit made
+here would be overwritten on the org's next sign-in. `website` arrives already normalised to
+include a scheme (admin-server's `provisioning.controller.js#normalizeWebsite`).
+
+| Method | Path | Auth | Payload → Response |
+|---|---|---|---|
+| GET | `/company/me` | any role | → `{company: {id, name, slug, website, logoUrl} \| null}` — scoped to `req.user.companyId`, never a client-supplied id. `null` (not 404) for an account whose company was never mirrored, so the UI falls back to default Nourishly branding instead of erroring |
+| GET | `/company/public/:slug` | **Public** | → `{company: {name, slug, logoUrl} \| null}` — branding for a slug-scoped login page (`/:companySlug/login`). Deliberately omits `website` and every contact field; returns `null` rather than 404 for an unknown slug so it can't be used to enumerate which slugs exist |
+
 ## Insights — `insights.routes.js`
 
 | Method | Path | Auth | Response |

@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { FIXED_RECIPE_CATEGORIES } from '@/lib/recipeCategories';
 import { RecipeRailCard } from './RecipeRailCard';
 
 export function RecipeRail({ recipes }) {
+  const { companySlug } = useParams();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('All');
 
@@ -30,7 +31,7 @@ export function RecipeRail({ recipes }) {
           <h2 className="text-xl">Recipe library</h2>
           <span className="text-xs text-muted-foreground">Drag into the schedule</span>
         </div>
-        <Link to="/app/recipes" className="text-xs font-semibold whitespace-nowrap text-forest hover:underline">
+        <Link to={`/${companySlug}/app/recipes`} className="text-xs font-semibold whitespace-nowrap text-forest hover:underline">
           Manage recipes →
         </Link>
       </div>

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { UserPlus, Users } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -27,6 +27,7 @@ export function UsersScreen() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const navigate = useNavigate();
+  const { companySlug } = useParams();
 
   const { data, isLoading, isError, refetch } = useUsers(roleFilter === 'all' ? undefined : { role: roleFilter });
   const { data: dietitians } = useDietitians();
@@ -37,7 +38,7 @@ export function UsersScreen() {
   // Dietitians get their own richer page (spec §2026-round2-fixes item 2 — personal/contact
   // details, credentials, working hours, account status); client/admin edits stay in the dialog.
   function openEdit(user) {
-    if (user.role === 'dietitian') navigate(`/app/users/dietitians/${user._id}`);
+    if (user.role === 'dietitian') navigate(`/${companySlug}/app/users/dietitians/${user._id}`);
     else setEditing(user);
   }
 

@@ -1,10 +1,11 @@
-import { Link } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { Video } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/portal/shared/EmptyState';
 import { formatDate, formatTime } from '@/lib/format';
 
 export function NextCallCard({ call, isLoading }) {
+  const { companySlug } = useParams();
   return (
     <section className="rounded-card bg-white p-6 shadow-soft">
       <h2 className="text-xl">Your next check-in</h2>
@@ -25,7 +26,7 @@ export function NextCallCard({ call, isLoading }) {
             </div>
           </div>
           <Link
-            to="/app/calls"
+            to={`/${companySlug}/app/calls`}
             className="mt-4 flex items-center gap-2 text-sm font-semibold text-forest hover:underline"
           >
             <Video className="size-4" aria-hidden="true" /> Manage this call →
@@ -37,7 +38,7 @@ export function NextCallCard({ call, isLoading }) {
             title="No call scheduled"
             description="Book a check-in with your dietitian whenever suits you."
             action={
-              <Link to="/app/calls" className="text-sm font-semibold text-coral hover:underline">
+              <Link to={`/${companySlug}/app/calls`} className="text-sm font-semibold text-coral hover:underline">
                 Book a call →
               </Link>
             }

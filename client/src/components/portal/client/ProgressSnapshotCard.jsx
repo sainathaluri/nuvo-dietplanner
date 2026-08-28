@@ -1,10 +1,11 @@
-import { Link } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/portal/shared/EmptyState';
 import { formatMeasurementHint } from '@/lib/clientPortal';
 import { WeightTrendChart } from './WeightTrendChart';
 
 export function ProgressSnapshotCard({ stats, isLoading }) {
+  const { companySlug } = useParams();
   const recordedMeasurements = stats?.measurements.filter((m) => m.latestValue != null) ?? [];
 
   return (
@@ -40,7 +41,7 @@ export function ProgressSnapshotCard({ stats, isLoading }) {
 
           <div className="mt-3 flex items-center justify-between text-sm">
             <span className="text-muted-foreground">Small steps, real change.</span>
-            <Link to="/app/progress" className="font-semibold text-forest hover:underline">
+            <Link to={`/${companySlug}/app/progress`} className="font-semibold text-forest hover:underline">
               View my progress →
             </Link>
           </div>
@@ -50,7 +51,7 @@ export function ProgressSnapshotCard({ stats, isLoading }) {
           title="No progress logged yet"
           description="Log your first weight check-in to start seeing your trend here."
           action={
-            <Link to="/app/progress" className="text-sm font-semibold text-coral hover:underline">
+            <Link to={`/${companySlug}/app/progress`} className="text-sm font-semibold text-coral hover:underline">
               Log progress →
             </Link>
           }

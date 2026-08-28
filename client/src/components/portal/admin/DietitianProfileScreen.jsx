@@ -14,7 +14,7 @@ import { DietitianWorkingHoursTab } from './DietitianWorkingHoursTab';
 // exact same WeeklyHoursForm component) the dietitian's own self-service screen and the booking
 // engine already use — see DietitianWorkingHoursTab.jsx.
 export function DietitianProfileScreen() {
-  const { id } = useParams();
+  const { id, companySlug } = useParams();
   const navigate = useNavigate();
   const { data: dietitian, isLoading, isError, refetch } = useClient(id);
 
@@ -22,7 +22,7 @@ export function DietitianProfileScreen() {
     <div className="mx-auto max-w-3xl p-9">
       <button
         type="button"
-        onClick={() => navigate('/app/users')}
+        onClick={() => navigate(`/${companySlug}/app/users`)}
         className="mb-4 inline-flex items-center gap-1 text-sm font-semibold text-forest hover:underline"
       >
         <ArrowLeft className="size-4" aria-hidden="true" />

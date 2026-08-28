@@ -43,14 +43,14 @@ export function ChangePasswordPage() {
   });
 
   if (user && !user.mustChangePassword) {
-    return <Navigate to={getPortalHome(user.role)} replace />;
+    return <Navigate to={getPortalHome(user.role, user.companySlug)} replace />;
   }
 
   const onSubmit = async ({ currentPassword, newPassword }) => {
     setServerError(null);
     try {
       const updated = await changePassword({ currentPassword, newPassword });
-      navigate(getPortalHome(updated.role), { replace: true });
+      navigate(getPortalHome(updated.role, updated.companySlug), { replace: true });
     } catch (error) {
       setServerError(getChangePasswordErrorMessage(error));
     }

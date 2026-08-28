@@ -2,11 +2,12 @@
 // itself — see OverviewPage). Kept as a lookup rather than a literal so a future phase can give
 // a role its own distinct landing route without touching every redirect call site.
 const PORTAL_HOME_BY_ROLE = {
-  client: '/app/overview',
-  dietitian: '/app/overview',
-  admin: '/app/overview',
+  client: 'overview',
+  dietitian: 'overview',
+  admin: 'overview',
 };
 
-export function getPortalHome(role) {
-  return PORTAL_HOME_BY_ROLE[role] ?? '/app/overview';
+export function getPortalHome(role, companySlug) {
+  const page = PORTAL_HOME_BY_ROLE[role] ?? 'overview';
+  return `/${companySlug}/app/${page}`;
 }

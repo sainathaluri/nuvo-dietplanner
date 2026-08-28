@@ -117,6 +117,30 @@ const ALTERS = [
   'ALTER TABLE enquiries ADD KEY idx_enquiries_company (company_id)',
   'ALTER TABLE program_plans ADD COLUMN company_id VARCHAR(36) NULL AFTER id',
   'ALTER TABLE program_plans ADD KEY idx_program_plans_company (company_id)',
+  // Company website (2026-08-28): mirrored from ZenX alongside name/slug/logo_url — see
+  // MIRRORED_TABLES below and models/Company.js#upsertCompanyFromHandoff. Nullable: it's optional
+  // on the ZenX side too, and every already-mirrored company predates the claim carrying it.
+  'ALTER TABLE companies ADD COLUMN website VARCHAR(1024) NULL AFTER slug',
+];
+
+// admin-server (ZenX) is the source of truth for company identity; this is only the local mirror
+// wellness-app needs so users.company_id/company_slug point at something real (see
+// models/Company.js). It deliberately isn't in schema.sql — that file is this app's *own* schema —
+// but it does have to exist before the first SSO handoff tries to upsert into it, and before the
+// ALTER above and backfillLegacyCompany's company_slug lookup can touch it. Columns are only the
+// subset wellness-app actually renders, not a copy of admin-server's much wider companies table.
+const MIRRORED_TABLES = [
+  `CREATE TABLE IF NOT EXISTS companies (
+     id VARCHAR(36) PRIMARY KEY,
+     name VARCHAR(255) NOT NULL,
+     slug VARCHAR(255) NOT NULL,
+     website VARCHAR(1024) NULL,
+     logo_url VARCHAR(1024) NULL,
+     status ENUM('ACTIVE', 'INACTIVE') NOT NULL DEFAULT 'ACTIVE',
+     created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+     updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+     UNIQUE KEY uq_companies_slug (slug)
+   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 ];
 
 // Run after ALTERS so the columns above are guaranteed to exist first. Each is a no-op once every
@@ -143,6 +167,24 @@ async function backfillLegacyCompany(conn) {
   await conn.query('UPDATE enquiries SET company_id = ? WHERE company_id IS NULL', [env.legacyCompanyId]);
   await conn.query('UPDATE program_plans SET company_id = ? WHERE company_id IS NULL', [env.legacyCompanyId]);
   console.log(`[migrate] backfilled ${pending} row(s) onto company_id = ${env.legacyCompanyId}`);
+
+  // company_slug (2026-08-28, company-slug URLs): a user with company_id but no company_slug
+  // lands on /null/app/... — see CompanySlugGuard.jsx. Best-effort only: the `companies` table
+  // itself isn't part of this schema (it's admin-server's, mirrored locally on demand — see
+  // models/Company.js), so a deployment that hasn't talked to admin-server yet won't have it.
+  try {
+    const [[legacyCompany]] = await conn.query('SELECT slug FROM companies WHERE id = ?', [env.legacyCompanyId]);
+    if (legacyCompany) {
+      await conn.query('UPDATE users SET company_slug = ? WHERE company_id = ? AND company_slug IS NULL', [
+        legacyCompany.slug,
+        env.legacyCompanyId,
+      ]);
+    } else {
+      console.warn(`[migrate] no companies row for ${env.legacyCompanyId} yet — company_slug left NULL, will backfill on next SSO login`);
+    }
+  } catch (err) {
+    console.warn('[migrate] company_slug backfill skipped (companies table not present yet):', err.message);
+  }
 }
 
 async function migrate() {
@@ -152,6 +194,13 @@ async function migrate() {
   console.log(`[migrate] connected → ${env.mysqlUrl}`);
   await conn.query(sql);
   console.log('[migrate] schema applied');
+
+  // Before ALTERS: the `companies` ALTER below targets this table, and it must exist by the time
+  // the first handoff upserts into it either way.
+  for (const statement of MIRRORED_TABLES) {
+    await conn.query(statement);
+  }
+  console.log('[migrate] mirrored tables applied');
 
   for (const statement of ALTERS) {
     try {

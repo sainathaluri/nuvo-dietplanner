@@ -1,13 +1,22 @@
 import { Link } from 'react-router-dom';
 import { Leaf, Sparkles, Sun } from 'lucide-react';
 
-export function AuthLayout({ eyebrow, title, subtitle, children }) {
+// `company` is the tenant whose slug-scoped login page this is (null/undefined on the bare /login,
+// which stays Nourishly-branded). Only the two wordmarks change — the panel's copy is Nourishly's
+// own product voice, not something a customer's branding should be pasted over.
+export function AuthLayout({ eyebrow, title, subtitle, company, children }) {
+  const brand = company?.name ?? 'nourishly';
   return (
     <div className="grid min-h-screen min-[1050px]:grid-cols-2">
       <div className="flex flex-col justify-center bg-cream px-6 py-12 sm:px-12">
         <div className="mx-auto w-full max-w-sm">
-          <Link to="/" className="mb-10 inline-block font-display text-xl text-forest">
-            ✦ nourishly
+          <Link to="/" className="mb-10 inline-flex items-center gap-2 font-display text-xl text-forest">
+            {company?.logoUrl ? (
+              <img src={company.logoUrl} alt="" className="size-7 shrink-0 rounded-md object-cover" />
+            ) : (
+              <span aria-hidden="true">✦</span>
+            )}
+            {brand}
           </Link>
 
           <p className="text-xs font-bold tracking-widest text-sage-deep">{eyebrow}</p>
@@ -28,7 +37,7 @@ export function AuthLayout({ eyebrow, title, subtitle, children }) {
           aria-hidden="true"
         />
 
-        <span className="relative font-display text-xl">✦ nourishly</span>
+        <span className="relative font-display text-xl">✦ {brand}</span>
 
         <blockquote className="relative">
           <Sparkles className="mb-4 size-8 text-yellow" aria-hidden="true" />

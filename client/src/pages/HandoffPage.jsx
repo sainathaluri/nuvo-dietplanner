@@ -8,7 +8,9 @@ import { getPortalHome } from '@/lib/portalHome';
 // ?token=...` — see issueHandoffToken in the ZenX admin-server repo). :companySlug isn't read here:
 // the token itself carries company_id/company_slug and the server (auth.controller.js#handoff) is
 // what actually scopes the resulting account to that org — the URL segment is only there to match
-// admin-server's redirect shape, not a second source of truth for which company this is.
+// admin-server's redirect shape, not a second source of truth for which company this is. The
+// post-login redirect below uses the resolved user's own companySlug, not this URL param, for the
+// same reason.
 export function HandoffPage() {
   useParams();
   const [searchParams] = useSearchParams();
@@ -28,7 +30,7 @@ export function HandoffPage() {
     }
 
     completeHandoff(token)
-      .then((user) => navigate(getPortalHome(user.role), { replace: true }))
+      .then((user) => navigate(getPortalHome(user.role, user.companySlug), { replace: true }))
       .catch(() => setError('This login link is invalid or has expired. Please sign in again from ZenX.'));
   }, [searchParams, completeHandoff, navigate]);
 

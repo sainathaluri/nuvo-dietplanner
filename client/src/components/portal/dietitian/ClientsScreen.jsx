@@ -66,7 +66,7 @@ export function ClientsScreen() {
             <button
               key={client._id}
               type="button"
-              onClick={() => navigate(`/app/clients/${client._id}`)}
+              onClick={() => navigate(`/${user.companySlug}/app/clients/${client._id}`)}
               className="flex items-center gap-3 rounded-card bg-white p-4 text-left shadow-soft transition-shadow hover:shadow-md"
             >
               <div className="grid size-9 shrink-0 place-items-center rounded-full bg-sage font-semibold text-forest">

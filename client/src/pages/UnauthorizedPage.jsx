@@ -18,7 +18,7 @@ export function UnauthorizedPage() {
           Your account doesn't have access to this page. If this seems wrong, ask your dietitian or admin.
         </p>
         <Button asChild className="rounded-full bg-coral text-white hover:bg-coral/90">
-          <Link to={user ? getPortalHome(user.role) : '/login'}>{user ? 'Back to your portal' : 'Log in'}</Link>
+          <Link to={user ? getPortalHome(user.role, user.companySlug) : '/login'}>{user ? 'Back to your portal' : 'Log in'}</Link>
         </Button>
       </div>
     </main>

@@ -21,7 +21,7 @@ export function ClientMessagesScreen() {
           title="No dietitian assigned yet"
           description="Pick a dietitian from your Overview page to start messaging."
           action={
-            <Link to="/app/overview" className="text-sm font-semibold text-coral hover:underline">
+            <Link to={`/${user.companySlug}/app/overview`} className="text-sm font-semibold text-coral hover:underline">
               Go to Overview →
             </Link>
           }

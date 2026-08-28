@@ -7,6 +7,8 @@
     "dev": "node --watch server.js",
     "start": "node server.js",
     "seed": "node src/seed.js",
+    "seed:tenants": "node src/db/seedTenants.js",
+    "probe:tenants": "node src/scripts/tenantIsolationProbe.mjs",
     "test:email": "node src/scripts/sendTestEmail.js",
     "db:migrate": "node src/db/migrate.js",
     "audit:converted-accounts": "node src/db/auditConvertedAccounts.js",

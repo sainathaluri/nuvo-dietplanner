@@ -21,7 +21,7 @@ export function AdminOverviewScreen() {
           <p className="mt-1 text-muted-foreground">Warm care is growing — here's what needs your attention.</p>
         </div>
         <Button asChild className="rounded-full bg-coral text-white hover:bg-coral/90">
-          <Link to="/app/enquiries">View enquiries →</Link>
+          <Link to={`/${user.companySlug}/app/enquiries`}>View enquiries →</Link>
         </Button>
       </div>
 
@@ -50,7 +50,7 @@ export function AdminOverviewScreen() {
             <section className="rounded-card bg-white p-6 shadow-soft">
               <div className="flex items-center justify-between">
                 <h2 className="text-xl">Growth over the last 8 weeks</h2>
-                <Link to="/app/insights" className="text-sm font-semibold text-forest hover:underline">
+                <Link to={`/${user.companySlug}/app/insights`} className="text-sm font-semibold text-forest hover:underline">
                   View insights →
                 </Link>
               </div>

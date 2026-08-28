@@ -222,6 +222,12 @@ async function seed() {
   if (!env.legacyCompanyId) {
     throw new Error('LEGACY_COMPANY_ID is not configured — run admin-server\'s seed first and set it in .env');
   }
+  // company_slug (2026-08-28, company-slug URLs): every seeded user needs one so they land on a
+  // real /:companySlug/app/... URL instead of /null/app/... — see CompanySlugGuard.jsx.
+  const [[legacyCompany]] = await pool.query('SELECT slug FROM companies WHERE id = ?', [env.legacyCompanyId]);
+  if (!legacyCompany) {
+    throw new Error(`No local companies row for LEGACY_COMPANY_ID=${env.legacyCompanyId} — run db:migrate first.`);
+  }
 
   const created = [];
   const skipped = [];
@@ -232,7 +238,14 @@ async function seed() {
       skipped.push(email);
       continue;
     }
-    await createUser({ name, email, passwordHash: await hashPassword(password), role, companyId: env.legacyCompanyId });
+    await createUser({
+      name,
+      email,
+      passwordHash: await hashPassword(password),
+      role,
+      companyId: env.legacyCompanyId,
+      companySlug: legacyCompany.slug,
+    });
     created.push(email);
   }
 

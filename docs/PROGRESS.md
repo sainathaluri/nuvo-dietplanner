@@ -1,9 +1,22 @@
 # Progress
 
-Last updated: 2026-08-27 (real multi-tenancy — this app is no longer single-tenant; every company
-that subscribes via ZenX gets its own isolated slice of data and its own org admin).
+Last updated: 2026-08-28 (company-slug URLs — every logged-in user's URL now carries their own
+company's name, e.g. `/acme-corp/app/overview`, instead of the same generic `/app/overview` for
+everyone; also the first live, in-browser verification of 2026-08-27's multi-tenancy work).
 For the detailed day-by-day build journal, see `docs/worklog/` — this file is the current-state
 summary; the worklog is the history.
+
+**Update, 2026-08-28: company-slug URLs, and the multi-tenancy SSO handoff verified live for the
+first time.** Yesterday's multi-tenancy work had never been run against a real browser — doing so
+today surfaced and fixed three real bugs: dev-server port drift silently breaking every cross-app
+URL (now pinned with `strictPort`), a brand-new ZenX company's first handoff failing on a missing
+local `companies` row (now upserted on every handoff), and every seeded demo user having a `NULL`
+`company_slug` (backfilled, and fixed at the source in both `seed.js` and `migrate.js`). Once that
+was working, added company-slug URLs: the whole `/app/*` tree now lives under `/:companySlug`, with
+a guard that bounces a mismatched slug back to the logged-in user's own (not a new security
+boundary — every controller already scopes by `req.user.companyId` regardless of the URL) and a
+redirect that keeps old bare `/app/...` bookmarks working. Full detail in
+`docs/worklog/2026-08-28.md`.
 
 **Update, 2026-08-27: shared ZenX auth → real organization isolation.** ZenX's admin-server already
 had a working shared-auth backbone (companies/customers/RBAC, SSO handoff) and this app already
@@ -761,6 +774,38 @@ One line per work session, newest first. Links to `docs/worklog/YYYY-MM-DD.md`.
   (`playwright-core` driving the system's installed Chrome). Found and fixed two real bugs (a
   flattened chart, a plan-builder-breaking timezone bug in two more places than Phase 8 caught),
   and directly confirmed the plan builder's drag-and-drop works with real mouse events.
+- [2026-08-28](worklog/2026-08-28.md) - Session 8: closed the bare `/login` bypass left by
+  Session 7. Every user belongs to exactly one company (0 rows have a NULL company_id), so a
+  login naming no company skipped the slug check entirely. `/login` now refuses and hands back
+  the caller's own `/{slug}/login` for the page to offer as a link - post-password only, so a
+  wrong password still returns a plain 401. Probe 52 -> 66 checks, all passing.
+- [2026-08-28](worklog/2026-08-28.md) - Session 7: strict multi-tenant company isolation.
+  Login resolves the URL slug to a company_id server-side and refuses a cross-tenant sign-in
+  before issuing any token; company status is gated; URL manipulation returns 403 instead of
+  silently rewriting. New two-tenant fixture (`seed:tenants`) and a 52-check cross-tenant HTTP
+  probe (`probe:tenants`), 52/52. Also unblocked the long-hanging multi-tenancy integration
+  test - it created users before their companies, so an FK failure in before() left pool.end()
+  unreached and the run hung.
+- [2026-08-28](worklog/2026-08-28.md) - Session 5: ZenX admin portal swallowed provisioning
+  errors - both `provisionCustomer` call sites had `try/finally` with no `catch`, so a 409
+  surfaced only as an unhandled AxiosError in the console while the form sat idle. Service now
+  unwraps the server message into a `ProvisioningError`; both modals render it.
+- [2026-08-28](worklog/2026-08-28.md) - Session 4: fixed intermittent
+  `ERR_CONNECTION_RESET` on the login POST in both apps - Node drops an idle keep-alive socket
+  after 5s, Chrome holds pooled sockets longer and will not silently retry a POST onto a dead
+  one (it does retry GETs, hiding this from the 8s polling). `keepAliveTimeout` raised to 65s
+  and `headersTimeout` to 66s on both servers.
+- [2026-08-28](worklog/2026-08-28.md) - Session 3: fixed the blank page a ZenX-provisioned
+  customer hit right after SSO - `ProtectedRoute` redirects to `/change-password`, but that
+  page was only routed at `/:companySlug/change-password`, so the bare path matched the
+  parent `/:companySlug` branch with no leaf and rendered an empty `<Outlet/>`. Moved it to a
+  top-level route beside `/login`; added an index redirect under `/:companySlug` for the same
+  trap on a bare company URL.
+- [2026-08-28](worklog/2026-08-28.md) - Session 2: company website carried end-to-end from ZenX
+  (form -> provisioning -> handoff claim -> mirror), plus company name/URL/website finally *shown*
+  in the portal - sidebar branding, tenant-branded login pages, and a read-only "Your organisation"
+  screen. New `GET /api/company/me` + public `/api/company/public/:slug`. `companies` table now
+  created by `migrate.js` instead of out-of-band.
 - [2026-08-10](worklog/2026-08-10.md) — Phases 1 (verification) through 8, all in one day across
   eight sessions: scaffold verification → enquiry flow → auth → portal shell → client portal →
   dietitian portal → admin portal → deploy & polish. Full detail, including every decision,

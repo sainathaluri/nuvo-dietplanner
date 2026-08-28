@@ -8,7 +8,7 @@ import {
   setPassword,
   bumpRefreshTokenVersion,
 } from '../models/User.js';
-import { upsertCompanyFromHandoff } from '../models/Company.js';
+import { upsertCompanyFromHandoff, findCompanyBySlug, findCompanyById } from '../models/Company.js';
 import {
   createPasswordResetToken,
   findValidPasswordResetToken,
@@ -37,6 +37,10 @@ const cookieOptions = {
   maxAge: 30 * 24 * 60 * 60 * 1000,
 };
 
+// One wording for every tenant-mismatch outcome (unknown slug, wrong company, user with no
+// company) so the response cannot be used to tell those cases apart.
+const TENANT_MISMATCH_MESSAGE = 'This login page belongs to a different company — check the URL your admin gave you.';
+
 function issueTokens(res, user) {
   const accessToken = signAccessToken(user);
   const refreshToken = signRefreshToken(user);
@@ -45,11 +49,50 @@ function issueTokens(res, user) {
 }
 
 export const login = asyncHandler(async (req, res) => {
-  const { email, password } = req.body;
+  const { email, password, companySlug } = req.body;
   const user = await findUserByEmail(email);
   if (!user || !(await comparePassword(password, user.passwordHash))) {
     throw ApiError.unauthorized('Invalid email or password');
   }
+
+  // ---- Tenant check -------------------------------------------------------------------------
+  // A slug-scoped login URL (/:companySlug/login) may only ever sign in that company's own users.
+  // The slug is resolved to a company_id *here*, from the database — the browser sends the slug it
+  // was on, never a company id, so nothing the client controls can widen access. The comparison is
+  // id-to-id: the URL's resolved company_id against the authenticated user's own stored
+  // company_id, never against the slug string the client sent or any value from the request body.
+  //
+  // Runs after the password check on purpose. Everything below can only be reached by someone who
+  // has already proved they own the account, so a distinct error here reveals nothing to an
+  // attacker probing for valid emails or live company slugs — and it is why naming the caller's
+  // own company URL below is safe.
+  if (!companySlug) {
+    // The bare /login is NOT a company-agnostic way in. Every user belongs to exactly one company
+    // (users.company_id is NOT NULL and createUser requires it), so "log in without naming a
+    // company" would be a door around the whole tenant rule — sign in here and the slug check
+    // never runs at all. Refused, and the caller is told where their own door is.
+    const slug = user.companySlug ?? (await findCompanyById(user.companyId))?.slug ?? null;
+    // The slug is handed back in `details` as well as the sentence, so the login page can offer it
+    // as a link rather than making the user retype a URL. Safe to disclose: this line is only ever
+    // reached by someone who has already supplied the correct password for this account.
+    throw ApiError.forbidden(
+      slug
+        ? `Sign in from your company's address instead: /${slug}/login`
+        : "Sign in from your company's own login page.",
+      slug ? { companyLoginPath: `/${slug}/login` } : undefined
+    );
+  }
+
+  const company = await findCompanyBySlug(companySlug);
+  // Unknown slug is 403, not 404: this is reachable only with valid credentials, and a
+  // distinguishable 404 would turn the login form into a slug-enumeration oracle.
+  if (!company) throw ApiError.forbidden(TENANT_MISMATCH_MESSAGE);
+  if (company.status !== 'ACTIVE') {
+    throw ApiError.forbidden('This company account is not active. Contact your administrator.');
+  }
+  // The one comparison that matters, and it is id-to-id: the company the URL resolved to, against
+  // the company stored on the authenticated user. Neither side comes from the request body.
+  if (company.id !== user.companyId) throw ApiError.forbidden(TENANT_MISMATCH_MESSAGE);
   // 'suspended' blocks login outright; 'inactive' does not (see the account_status comment in
   // schema.sql — a dietitian temporarily not taking new work can still manage existing clients).
   // Checked here (not just in authenticate.js) so a suspended account can't even get a first
@@ -82,6 +125,7 @@ export const handoff = asyncHandler(async (req, res) => {
     id: payload.company_id,
     name: payload.company_name,
     slug: payload.company_slug,
+    website: payload.website,
     logoUrl: payload.logo_url,
   });
 
