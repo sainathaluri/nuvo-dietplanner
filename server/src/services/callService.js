@@ -2,6 +2,7 @@ import { createCall as createCallRecord, updateCallById } from '../models/Call.j
 import { withTransaction } from '../db/pool.js';
 import { assertSlotAvailable } from './availabilityGuard.js';
 import { notifyCallEvent } from './callNotifications.js';
+import { attachMeetingToCall, moveMeetingForCall, cancelMeetingForCall } from './callMeeting.js';
 
 // The one place a call is ever booked, from ANY entry point (call.controller.js's POST /calls, and
 // enquiry.controller.js's Follow-up flow) — both call this instead of models/Call.js#createCall
@@ -30,8 +31,12 @@ export async function bookCall({
         return createCallRecord(payload, conn);
       });
 
-  if (!skipNotification) await notifyCallEvent('booked', call);
-  return call;
+  // Before the notification, so the booking email and its .ics invite can carry the join link.
+  // Never throws and never blocks the booking — see services/callMeeting.js.
+  const withMeeting = await attachMeetingToCall(call);
+
+  if (!skipNotification) await notifyCallEvent('booked', withMeeting);
+  return withMeeting;
 }
 
 // existingCall: the pre-update call row (for transition detection — did scheduledAt actually
@@ -64,9 +69,14 @@ export async function applyCallUpdate(callId, existingCall, patch, { force = fal
         })
       : await updateCallById(callId, finalPatch);
 
+  // Keep the Google Calendar event in step with the row: move it on a reschedule (so the same
+  // Meet link stays valid and the dietitian's calendar is correct), delete it on a cancellation
+  // (so a cancelled call doesn't leave a live meeting behind). Both are best-effort.
   if (isCancellation) {
+    await cancelMeetingForCall(updated);
     await notifyCallEvent('cancelled', updated);
   } else if (isReschedule) {
+    await moveMeetingForCall(updated, existingCall);
     await notifyCallEvent('rescheduled', updated, { previousScheduledAt: existingCall.scheduledAt });
   }
 

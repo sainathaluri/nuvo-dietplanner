@@ -84,7 +84,10 @@ export function LoginPage() {
               <FormItem>
                 <div className="flex items-center justify-between">
                   <FormLabel>Password</FormLabel>
-                  <Link to="/forgot-password" className="text-xs font-semibold text-forest hover:underline">
+                  <Link
+                    to={companySlug ? `/${companySlug}/forgot-password` : '/forgot-password'}
+                    className="text-xs font-semibold text-forest hover:underline"
+                  >
                     Forgot your password?
                   </Link>
                 </div>

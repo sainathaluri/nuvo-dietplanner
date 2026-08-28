@@ -24,6 +24,7 @@ import { insightsRouter } from './routes/insights.routes.js';
 import { emailLogRouter } from './routes/emailLog.routes.js';
 import { consultationScheduleRouter } from './routes/consultationSchedule.routes.js';
 import { companyRouter } from './routes/company.routes.js';
+import { integrationsRouter } from './routes/integrations.routes.js';
 
 export const app = express();
 
@@ -57,6 +58,7 @@ app.use('/api/insights', insightsRouter);
 app.use('/api/emails', emailLogRouter);
 app.use('/api/consultation-schedule', consultationScheduleRouter);
 app.use('/api/company', companyRouter);
+app.use('/api/integrations', integrationsRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

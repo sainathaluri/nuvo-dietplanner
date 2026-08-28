@@ -121,7 +121,10 @@ export const handoff = asyncHandler(async (req, res) => {
 
   // users.company_id has a FK into this app's own companies table — mirror the ZenX company here
   // first so a brand-new (never-before-seen) company can SSO in without a pre-seeded local row.
-  await upsertCompanyFromHandoff({
+  // Use whatever id the mirror resolved to, not the token's — a company recreated in ZenX under an
+  // existing slug keeps this app's original id (see upsertCompanyFromHandoff), and pointing the new
+  // user at the token's id instead would fail fk_users_company.
+  const localCompanyId = await upsertCompanyFromHandoff({
     id: payload.company_id,
     name: payload.company_name,
     slug: payload.company_slug,
@@ -152,7 +155,7 @@ export const handoff = asyncHandler(async (req, res) => {
         passwordHash: await hashPassword(crypto.randomBytes(32).toString('hex')),
         role: payload.role === 'wellness_admin' ? 'admin' : 'dietitian',
         zenxUserId: payload.sub,
-        companyId: payload.company_id,
+        companyId: localCompanyId,
         companySlug: payload.company_slug ?? null,
       });
     }
@@ -216,7 +219,13 @@ export const forgotPassword = asyncHandler(async (req, res) => {
     const expiresAt = new Date(Date.now() + env.passwordResetTokenTtlMinutes * 60 * 1000);
     await createPasswordResetToken({ userId: user.id, tokenHash: hashResetToken(rawToken), expiresAt });
 
-    const resetUrl = `${env.clientOrigin}/reset-password?token=${rawToken}`;
+    // Slug-scoped so the link lands on the user's own company page — branded like their login
+    // page, and, more importantly, so ResetPasswordPage can send them to /{slug}/login afterwards.
+    // The bare /login refuses everyone (see the tenant check above), so a slugless reset link would
+    // end on a page that cannot sign the user in. Falls back to the bare path only for a user with
+    // no company_slug, which the bare /reset-password route still serves.
+    const resetPath = user.companySlug ? `/${user.companySlug}/reset-password` : '/reset-password';
+    const resetUrl = `${env.clientOrigin}${resetPath}?token=${rawToken}`;
     await sendPasswordResetEmail(user.email, resetUrl).catch((err) => {
       console.error('[forgotPassword] failed to send reset email', err);
     });

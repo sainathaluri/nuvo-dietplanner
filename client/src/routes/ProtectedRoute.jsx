@@ -10,9 +10,18 @@ export function ProtectedRoute() {
 
   // Blocks every route this guard wraps — not just /app/* — until a forced password change is
   // done, so typing any protected URL directly can't bypass it (spec verification requirement).
-  // The `pathname` check avoids redirecting /change-password to itself.
-  if (user.mustChangePassword && location.pathname !== '/change-password') {
-    return <Navigate to="/change-password" replace />;
+  //
+  // The target is the user's own company-scoped path, so the forced change looks like the rest of
+  // their tenant (branded, same URL shape as /:companySlug/login). Comparing against that same
+  // computed path — not the bare literal — is what stops this redirecting the slug-scoped page to
+  // itself forever. It also self-corrects a hand-typed /other-company/change-password back to the
+  // caller's own slug.
+  //
+  // Falls back to the bare /change-password when the user has no company_slug (the column is
+  // nullable); that route still exists at the top level for exactly this case.
+  const changePasswordPath = user.companySlug ? `/${user.companySlug}/change-password` : '/change-password';
+  if (user.mustChangePassword && location.pathname !== changePasswordPath) {
+    return <Navigate to={changePasswordPath} replace />;
   }
 
   return <Outlet />;

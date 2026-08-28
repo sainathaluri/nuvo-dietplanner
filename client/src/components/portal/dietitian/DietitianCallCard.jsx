@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { useUpdateCall } from '@/hooks/useCalls';
 import { formatDate, formatTime } from '@/lib/format';
+import { JoinMeetingButton } from '@/components/portal/shared/JoinMeetingButton';
 
 const STATUS_VARIANT = { scheduled: 'default', completed: 'secondary', cancelled: 'outline' };
 
@@ -55,6 +56,8 @@ export function DietitianCallCard({ call, onReschedule }) {
       {call.enquiry && <p className="mt-2 text-xs text-muted-foreground">{call.enquiry.phone} · {call.enquiry.email}</p>}
 
       {call.notes && <p className="mt-2 text-sm text-forest">{call.notes}</p>}
+
+      <JoinMeetingButton call={call} className="mt-4" />
 
       {isScheduled && (
         <div className="mt-4 flex items-center gap-4">

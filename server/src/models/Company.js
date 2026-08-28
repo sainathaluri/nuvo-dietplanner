@@ -10,17 +10,48 @@ import { pool } from '../db/pool.js';
 // token had already mirrored. A real clearing on the ZenX side sends an explicit null, which is
 // indistinguishable from "absent" in JSON — accepted, since a stale-but-correct link is a better
 // failure than one that disappears every other login during a rolling deploy.
+// Returns the id this company actually has here, which is NOT always the ZenX id in the token.
+// This table has two unique keys (PRIMARY KEY(id) and uq_companies_slug), so a plain
+// ON DUPLICATE KEY UPDATE can collide on the *slug* and update a pre-existing row instead of
+// inserting, leaving the token's company_id absent — and the caller then inserts a user pointing
+// at an id that isn't there, failing fk_users_company. That happens whenever a company is deleted
+// and recreated in ZenX under the same slug: ZenX mints a new id, this mirror still holds the old
+// one. Resolving id-then-slug and returning the effective id keeps the FK satisfiable.
+//
+// A slug already held under a different id keeps that id rather than being retargeted, so rows
+// already pointing at it are never orphaned. Mirrors admin-server's WellnessDb.js#upsertCompany.
 export async function upsertCompanyFromHandoff({ id, name, slug, website, logoUrl }) {
-  await pool.query(
-    `INSERT INTO companies (id, name, slug, website, logo_url)
-     VALUES (?, ?, ?, ?, ?)
-     ON DUPLICATE KEY UPDATE
-       name = VALUES(name),
-       slug = VALUES(slug),
-       website = COALESCE(VALUES(website), website),
-       logo_url = VALUES(logo_url)`,
-    [id, name, slug, website ?? null, logoUrl]
-  );
+  const [byId] = await pool.query('SELECT id FROM companies WHERE id = ? LIMIT 1', [id]);
+  if (byId[0]) {
+    // `website` is COALESCE'd rather than overwritten: a token minted by an admin-server that
+    // predates the website claim carries `undefined` there, and blindly writing that would wipe a
+    // value a newer token had already mirrored.
+    await pool.query(
+      'UPDATE companies SET name = ?, slug = ?, website = COALESCE(?, website), logo_url = ? WHERE id = ?',
+      [name, slug, website ?? null, logoUrl, id]
+    );
+    return id;
+  }
+
+  const [bySlug] = await pool.query('SELECT id FROM companies WHERE slug = ? LIMIT 1', [slug]);
+  if (bySlug[0]) {
+    await pool.query('UPDATE companies SET name = ?, website = COALESCE(?, website), logo_url = ? WHERE id = ?', [
+      name,
+      website ?? null,
+      logoUrl,
+      bySlug[0].id,
+    ]);
+    return bySlug[0].id;
+  }
+
+  await pool.query('INSERT INTO companies (id, name, slug, website, logo_url) VALUES (?, ?, ?, ?, ?)', [
+    id,
+    name,
+    slug,
+    website ?? null,
+    logoUrl,
+  ]);
+  return id;
 }
 
 export async function findCompanyById(id) {

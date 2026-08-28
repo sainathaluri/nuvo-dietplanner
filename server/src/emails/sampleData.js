@@ -36,6 +36,8 @@ export const SAMPLE_DATA = {
     dietitian_name: 'Dr. Asha Rao',
     meeting_time: 'Wednesday, 26 Aug 2026, 10:00 AM (Asia/Kolkata)',
     meeting_link: 'http://localhost:5173/app/calls',
+    join_url: 'https://meet.google.com/abc-defg-hij',
+    join_label: 'Join Google Meet',
     ics: { ...SAMPLE_CALL_ICS, sequence: 0, start: '2026-08-26T04:30:00.000Z' },
   },
   'call-scheduled-dietitian': {
@@ -43,6 +45,8 @@ export const SAMPLE_DATA = {
     dietitian_name: 'Dr. Asha Rao',
     meeting_time: 'Wednesday, 26 Aug 2026, 10:00 AM (Asia/Kolkata)',
     meeting_link: 'http://localhost:5173/app/calls',
+    join_url: 'https://meet.google.com/abc-defg-hij',
+    join_label: 'Join Google Meet',
     ics: { ...SAMPLE_CALL_ICS, sequence: 0, start: '2026-08-26T04:30:00.000Z' },
   },
   'call-rescheduled': {
@@ -51,6 +55,8 @@ export const SAMPLE_DATA = {
     meeting_time: 'Thursday, 27 Aug 2026, 3:00 PM (Asia/Kolkata)',
     previous_meeting_time: 'Wednesday, 26 Aug 2026, 10:00 AM (Asia/Kolkata)',
     meeting_link: 'http://localhost:5173/app/calls',
+    join_url: 'https://meet.google.com/abc-defg-hij',
+    join_label: 'Join Google Meet',
     ics: { ...SAMPLE_CALL_ICS, sequence: 1, start: '2026-08-27T09:30:00.000Z' },
   },
   'call-rescheduled-dietitian': {
@@ -59,6 +65,8 @@ export const SAMPLE_DATA = {
     meeting_time: 'Thursday, 27 Aug 2026, 3:00 PM (Asia/Kolkata)',
     previous_meeting_time: 'Wednesday, 26 Aug 2026, 10:00 AM (Asia/Kolkata)',
     meeting_link: 'http://localhost:5173/app/calls',
+    join_url: 'https://meet.google.com/abc-defg-hij',
+    join_label: 'Join Google Meet',
     ics: { ...SAMPLE_CALL_ICS, sequence: 1, start: '2026-08-27T09:30:00.000Z' },
   },
   'call-cancelled': {
@@ -66,6 +74,8 @@ export const SAMPLE_DATA = {
     dietitian_name: 'Dr. Asha Rao',
     meeting_time: 'Thursday, 27 Aug 2026, 3:00 PM (Asia/Kolkata)',
     meeting_link: 'http://localhost:5173/app/calls',
+    join_url: 'https://meet.google.com/abc-defg-hij',
+    join_label: 'Join Google Meet',
     ics: { ...SAMPLE_CALL_ICS, sequence: 2, start: '2026-08-27T09:30:00.000Z' },
   },
   'call-cancelled-dietitian': {
@@ -73,6 +83,8 @@ export const SAMPLE_DATA = {
     dietitian_name: 'Dr. Asha Rao',
     meeting_time: 'Thursday, 27 Aug 2026, 3:00 PM (Asia/Kolkata)',
     meeting_link: 'http://localhost:5173/app/calls',
+    join_url: 'https://meet.google.com/abc-defg-hij',
+    join_label: 'Join Google Meet',
     ics: { ...SAMPLE_CALL_ICS, sequence: 2, start: '2026-08-27T09:30:00.000Z' },
   },
   'consultation-schedule-generated': {

@@ -11,6 +11,14 @@ const schemaPath = join(dirname(fileURLToPath(import.meta.url)), 'schema.sql');
 // Each is applied individually and a "duplicate column"/"already exists" error is swallowed (see
 // the catch below), so re-running this script stays a no-op once a change is already there.
 const ALTERS = [
+  // Google Meet (2026-08-29). meeting_url is the joinable link; google_event_id is the Calendar
+  // event it came from, kept so a reschedule can PATCH that same event and a cancellation can
+  // DELETE it instead of leaving an orphaned meeting on the dietitian's calendar. provider is
+  // stored rather than assumed so a second provider (Zoom, Teams) can be added later without
+  // having to guess what an existing row's link is.
+  "ALTER TABLE calls ADD COLUMN meeting_url VARCHAR(512) NULL AFTER notes",
+  "ALTER TABLE calls ADD COLUMN meeting_provider VARCHAR(32) NULL AFTER meeting_url",
+  "ALTER TABLE calls ADD COLUMN google_event_id VARCHAR(255) NULL AFTER meeting_provider",
   // Position fixed to `AFTER notes` (not the now-removed `frequency` column it originally
   // followed) — see the 2026-08-22 DROP entries below for why `frequency` is gone.
   'ALTER TABLE calls ADD COLUMN reminder_minutes_before INT NULL AFTER notes',

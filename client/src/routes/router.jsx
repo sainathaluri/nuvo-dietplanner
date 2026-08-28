@@ -56,7 +56,9 @@ export const router = createBrowserRouter([
       { path: '/:companySlug/login', element: <LoginPage /> },
       { path: '/:companySlug/handoff', element: <HandoffPage /> },
       { path: '/forgot-password', element: <ForgotPasswordPage /> },
+      { path: '/:companySlug/forgot-password', element: <ForgotPasswordPage /> },
       { path: '/reset-password', element: <ResetPasswordPage /> },
+      { path: '/:companySlug/reset-password', element: <ResetPasswordPage /> },
       { path: '/unauthorized', element: <UnauthorizedPage /> },
       // Preserves bare /app/... links/bookmarks from before company-slug URLs existed — redirects
       // to the same sub-path under the logged-in user's own slug instead of 404ing them.
@@ -69,7 +71,11 @@ export const router = createBrowserRouter([
       // branch with no matching leaf and render a blank page.
       {
         element: <ProtectedRoute />,
-        children: [{ path: '/change-password', element: <ChangePasswordPage /> }],
+        children: [
+          { path: '/change-password', element: <ChangePasswordPage /> },
+          { path: '/:companySlug/change-password', element: <ChangePasswordPage /> }
+        ],
+
       },
       {
         path: '/:companySlug',

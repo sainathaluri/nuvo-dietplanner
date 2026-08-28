@@ -47,6 +47,11 @@ export async function notifyCallEvent(event, call, { previousScheduledAt } = {})
       : null;
 
   const meetingLink = `${env.clientOrigin}/app/calls`;
+  // The real Google Meet room when the dietitian has connected Google (services/callMeeting.js),
+  // otherwise the portal page — always a usable destination, so the templates need no conditional
+  // (renderTemplate.js is plain {{token}} substitution and throws on a missing key).
+  const joinUrl = call.meetingUrl || meetingLink;
+  const joinLabel = call.meetingUrl ? 'Join Google Meet' : 'View in Nourishly';
   const meetingTime = formatMeetingTime(call.scheduledAt, dietitian.timezone);
   const previousMeetingTime = previousScheduledAt ? formatMeetingTime(previousScheduledAt, dietitian.timezone) : undefined;
 
@@ -54,8 +59,15 @@ export async function notifyCallEvent(event, call, { previousScheduledAt } = {})
     callId: call.id,
     sequence: call.icsSequence,
     summary: `Nourishly call with ${dietitian.name}`,
-    description: `Your call with ${dietitian.name} via Nourishly.`,
-    url: meetingLink,
+    // The join link goes in the description as well as `url`: calendar clients differ in which
+    // one they surface, and Google Calendar in particular renders the description body but not
+    // every event URL field.
+    description: call.meetingUrl
+      ? `Your call with ${dietitian.name} via Nourishly.
+
+Join: ${call.meetingUrl}`
+      : `Your call with ${dietitian.name} via Nourishly.`,
+    url: joinUrl,
     start: call.scheduledAt,
     organizer: { name: dietitian.name, email: dietitian.email },
   };
@@ -70,6 +82,8 @@ export async function notifyCallEvent(event, call, { previousScheduledAt } = {})
         meeting_time: meetingTime,
         previous_meeting_time: previousMeetingTime,
         meeting_link: meetingLink,
+        join_url: joinUrl,
+        join_label: joinLabel,
         ics: { ...icsBase, attendee: { name: attendee.name, email: attendee.email } },
       },
       `${templates.client}:${call.id}:${call.icsSequence}:client`,
@@ -86,6 +100,8 @@ export async function notifyCallEvent(event, call, { previousScheduledAt } = {})
       meeting_time: meetingTime,
       previous_meeting_time: previousMeetingTime,
       meeting_link: meetingLink,
+      join_url: joinUrl,
+      join_label: joinLabel,
       ics: {
         ...icsBase,
         attendee: attendee ? { name: attendee.name, email: attendee.email } : { name: dietitian.name, email: dietitian.email },

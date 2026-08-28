@@ -2,12 +2,13 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Link } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { AuthLayout } from '@/components/auth/AuthLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
 import { forgotPasswordRequest } from '@/api/auth.api';
+import { usePublicCompany } from '@/hooks/useCompany';
 
 const forgotPasswordSchema = z.object({
   email: z.string().email('Enter a valid email'),
@@ -19,6 +20,12 @@ const forgotPasswordSchema = z.object({
 export function ForgotPasswordPage() {
   const [submitted, setSubmitted] = useState(false);
   const [serverError, setServerError] = useState(null);
+  const { companySlug } = useParams();
+  // Branding and the back-link both follow the slug, so a user who starts at /{slug}/login stays
+  // inside their company for the whole reset round-trip instead of dropping to generic Nourishly
+  // pages and, at the end, to a bare /login that would refuse them.
+  const { data: company } = usePublicCompany(companySlug);
+  const loginPath = companySlug ? `/${companySlug}/login` : '/login';
 
   const form = useForm({
     resolver: zodResolver(forgotPasswordSchema),
@@ -43,12 +50,12 @@ export function ForgotPasswordPage() {
 
   if (submitted) {
     return (
-      <AuthLayout eyebrow="CHECK YOUR EMAIL" title="Reset link sent">
+      <AuthLayout eyebrow="CHECK YOUR EMAIL" title="Reset link sent" company={company}>
         <p className="text-sm text-muted-foreground">
           If that email is registered with Nourishly, we've sent a link to reset your password. It expires in an
           hour.
         </p>
-        <Link to="/login" className="mt-6 inline-block text-sm font-semibold text-forest hover:underline">
+        <Link to={loginPath} className="mt-6 inline-block text-sm font-semibold text-forest hover:underline">
           Back to log in
         </Link>
       </AuthLayout>
@@ -60,6 +67,7 @@ export function ForgotPasswordPage() {
       eyebrow="FORGOT PASSWORD"
       title="Reset your password"
       subtitle="Enter the email on your account and we'll send you a reset link."
+      company={company}
     >
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} noValidate className="grid gap-4">
@@ -93,7 +101,7 @@ export function ForgotPasswordPage() {
         </form>
       </Form>
 
-      <Link to="/login" className="mt-6 inline-block text-sm font-semibold text-forest hover:underline">
+      <Link to={loginPath} className="mt-6 inline-block text-sm font-semibold text-forest hover:underline">
         Back to log in
       </Link>
     </AuthLayout>

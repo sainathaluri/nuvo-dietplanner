@@ -3,6 +3,7 @@ import { Video } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/portal/shared/EmptyState';
 import { formatDate, formatTime } from '@/lib/format';
+import { JoinMeetingButton } from '@/components/portal/shared/JoinMeetingButton';
 
 export function NextCallCard({ call, isLoading }) {
   const { companySlug } = useParams();
@@ -25,6 +26,8 @@ export function NextCallCard({ call, isLoading }) {
               <span className="text-xs text-muted-foreground">Your dietitian</span>
             </div>
           </div>
+          <JoinMeetingButton call={call} className="mt-4" />
+
           <Link
             to={`/${companySlug}/app/calls`}
             className="mt-4 flex items-center gap-2 text-sm font-semibold text-forest hover:underline"

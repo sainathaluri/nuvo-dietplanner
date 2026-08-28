@@ -27,7 +27,7 @@ export const listCalls = asyncHandler(async (req, res) => {
   if (req.query.to) filter.to = new Date(req.query.to);
 
   const calls = await queryCalls(filter);
-  res.json(calls.map((c) => toClientShape(c)));
+  res.json(calls.map((c) => toClientShape(c, ['googleEventId'])));
 });
 
 // GET /calls/available-slots?date=&dietitian=&excludeCallId= — dietitian resolution mirrors
@@ -85,7 +85,7 @@ export const createCall = asyncHandler(async (req, res) => {
   // can never skip the email just because it came from a different entry point.
   const call = await bookCall({ client, dietitian, scheduledAt, notes, reminderMinutesBefore, force });
 
-  res.status(201).json(toClientShape(call));
+  res.status(201).json(toClientShape(call, ['googleEventId']));
 });
 
 export const updateCall = asyncHandler(async (req, res) => {
@@ -117,7 +117,7 @@ export const updateCall = asyncHandler(async (req, res) => {
   const force = req.user.role !== 'client' && Boolean(req.body.force);
   const updated = await applyCallUpdate(req.params.id, call, req.body, { force });
 
-  res.json(toClientShape(updated));
+  res.json(toClientShape(updated, ['googleEventId']));
 });
 
 export const deleteCall = asyncHandler(async (req, res) => {

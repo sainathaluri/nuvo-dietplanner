@@ -774,6 +774,13 @@ One line per work session, newest first. Links to `docs/worklog/YYYY-MM-DD.md`.
   (`playwright-core` driving the system's installed Chrome). Found and fixed two real bugs (a
   flattened chart, a plan-builder-breaking timezone bug in two more places than Phase 8 caught),
   and directly confirmed the plan builder's drag-and-drop works with real mouse events.
+- [2026-08-29](worklog/2026-08-29.md) - Google Meet links on scheduled calls. Per-dietitian
+  OAuth (works with ordinary gmail accounts; a service account would have needed Workspace
+  domain-wide delegation), built on global fetch with no new dependency. One integration point
+  covers ad-hoc, recurring and follow-up bookings because they already funnel through
+  `callService#bookCall`; reschedule moves the event, cancel deletes it and clears the link.
+  The link rides the .ics invite and the call emails. Entirely inert until GOOGLE_CLIENT_ID /
+  GOOGLE_CLIENT_SECRET are set - and not yet exercised against real Google.
 - [2026-08-28](worklog/2026-08-28.md) - Session 8: closed the bare `/login` bypass left by
   Session 7. Every user belongs to exactly one company (0 rows have a NULL company_id), so a
   login naming no company skipped the slug check entirely. `/login` now refuses and hands back

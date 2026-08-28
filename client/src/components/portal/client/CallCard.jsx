@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { useUpdateCall } from '@/hooks/useCalls';
 import { formatDate, formatTime } from '@/lib/format';
+import { JoinMeetingButton } from '@/components/portal/shared/JoinMeetingButton';
 
 const STATUS_VARIANT = { scheduled: 'default', completed: 'secondary', cancelled: 'outline' };
 
@@ -36,6 +37,8 @@ export function CallCard({ call, onReschedule }) {
           {call.status}
         </Badge>
       </div>
+
+      <JoinMeetingButton call={call} className="mt-4" />
 
       {!isPast && (
         <div className="mt-4 flex items-center gap-4">

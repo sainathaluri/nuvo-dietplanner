@@ -6,4 +6,4 @@ Your call with {{dietitian_name}}, previously at {{previous_meeting_time}}, has 
 The attached calendar invite updates the event already on your calendar — you don't need to add a
 second one.
 
-View in Nourishly: {{meeting_link}}
+{{join_label}}: {{join_url}}

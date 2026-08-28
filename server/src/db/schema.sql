@@ -501,3 +501,25 @@ CREATE TABLE IF NOT EXISTS dietitian_availability_exceptions (
   KEY idx_exceptions_dietitian_range (dietitian_id, start_at, end_at),
   CONSTRAINT fk_exceptions_dietitian FOREIGN KEY (dietitian_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Per-dietitian Google OAuth grant, for creating Calendar events with a Google Meet room attached
+-- (services/googleMeet.js). One row per connected user; disconnecting deletes the row rather than
+-- blanking it, so "connected?" is a plain existence check.
+--
+-- Only the refresh token is durable — access tokens are short-lived and re-minted on demand, so a
+-- stale/absent one is never an error. Both are stored as-is: this is the same trust boundary as
+-- users.password_hash's row, and encrypting them would need a key management story this app does
+-- not have yet (noted in docs/worklog 2026-08-29 as follow-up).
+--
+-- ON DELETE CASCADE: a deleted user must not leave a live grant against their Google account.
+CREATE TABLE IF NOT EXISTS google_oauth_tokens (
+  user_id VARCHAR(36) PRIMARY KEY,
+  google_email VARCHAR(255) NULL,
+  refresh_token TEXT NOT NULL,
+  access_token TEXT NULL,
+  access_token_expires_at DATETIME(3) NULL,
+  scope TEXT NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  CONSTRAINT fk_google_tokens_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

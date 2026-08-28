@@ -32,6 +32,14 @@ export const env = {
   // instead, which forgotPassword's controller already catches and logs.
   resendApiKey: process.env.RESEND_API_KEY || '',
   emailFrom: process.env.EMAIL_FROM || 'Nourishly <onboarding@resend.dev>',
+  // Google Calendar / Meet (services/googleMeet.js). Not `required(...)`: with these unset the
+  // whole integration is simply inert — calls are still booked, just without a meeting link — so
+  // an unconfigured install must not fail to boot. googleMeet.js#isGoogleConfigured is the single
+  // place that decides whether the feature is on.
+  googleClientId: process.env.GOOGLE_CLIENT_ID || '',
+  googleClientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
+  // Must match a redirect URI registered on the OAuth client in Google Cloud Console, exactly.
+  googleRedirectUri: process.env.GOOGLE_REDIRECT_URI || 'http://localhost:4000/api/integrations/google/callback',
   passwordResetTokenTtlMinutes: Number(process.env.PASSWORD_RESET_TOKEN_TTL_MINUTES || 60),
   // Notification engine (server/src/emails/). emailTransport is left as whatever was configured
   // (or undefined) here — transport/index.js#resolveTransportKind is what actually enforces the

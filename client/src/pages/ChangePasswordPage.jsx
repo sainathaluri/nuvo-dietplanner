@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
 import { useAuth } from '@/hooks/useAuth';
+import { usePublicCompany } from '@/hooks/useCompany';
 import { getPortalHome } from '@/lib/portalHome';
 
 const changePasswordSchema = z
@@ -36,6 +37,12 @@ export function ChangePasswordPage() {
   const { user, changePassword } = useAuth();
   const navigate = useNavigate();
   const [serverError, setServerError] = useState(null);
+  // Branded from the *public* company endpoint rather than /company/me: this page only ever
+  // renders while user.mustChangePassword is true, and company.routes.js mounts
+  // blockIfMustChangePassword ahead of /me, so the authenticated lookup would 403 for exactly the
+  // user looking at this screen. The slug comes from the session, not a URL param, so the branding
+  // still resolves on the bare /change-password path ProtectedRoute redirects to.
+  const { data: company } = usePublicCompany(user?.companySlug);
 
   const form = useForm({
     resolver: zodResolver(changePasswordSchema),
@@ -60,6 +67,7 @@ export function ChangePasswordPage() {
     <AuthLayout
       eyebrow="ONE MORE STEP"
       title="Set a new password"
+      company={company}
       subtitle="Your account was created with a temporary password — choose a new one to continue."
     >
       <Form {...form}>

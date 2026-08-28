@@ -11,6 +11,9 @@ const CALL_COLUMNS = {
   rescheduledAt: 'rescheduled_at',
   icsSequence: 'ics_sequence',
   consultationScheduleId: 'consultation_schedule_id',
+  meetingUrl: 'meeting_url',
+  meetingProvider: 'meeting_provider',
+  googleEventId: 'google_event_id',
 };
 
 // dietitianName/clientName/enquiryName etc. are only present when the caller asked for them via
@@ -35,6 +38,11 @@ function mapCall(row) {
     consultationScheduleId: row.consultation_schedule_id,
     originalScheduledAt: row.original_scheduled_at,
     rescheduledAt: row.rescheduled_at,
+    meetingUrl: row.meeting_url,
+    meetingProvider: row.meeting_provider,
+    // Google's own event id is an internal detail — it is never sent to the client (see
+    // call.controller.js, which strips it), only used server-side to patch/delete the event.
+    googleEventId: row.google_event_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
